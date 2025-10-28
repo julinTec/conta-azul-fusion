@@ -1,1 +1,7 @@
 project_id = "vvabffebndtzellpnomq"
+
+[functions.conta-azul-auth]
+verify_jwt = false
+
+[functions.conta-azul-data]
+verify_jwt = false
