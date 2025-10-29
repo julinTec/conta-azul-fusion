@@ -1,0 +1,269 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface Transaction {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  description: string;
+  date: string;
+  status?: string;
+  category?: {
+    name: string;
+    color: string;
+  };
+}
+
+export const Transactions = () => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  useEffect(() => {
+    loadTransactions();
+  }, []);
+
+  useEffect(() => {
+    filterTransactions();
+  }, [searchTerm, startDate, endDate, transactions]);
+
+  const loadTransactions = async () => {
+    const token = localStorage.getItem("conta_azul_access_token");
+    if (!token) return;
+
+    try {
+      setLoading(true);
+      
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      const formatDate = (date: Date) => date.toISOString().split('T')[0];
+
+      const { data, error } = await supabase.functions.invoke("conta-azul-data", {
+        body: {
+          accessToken: token,
+          startDate: formatDate(monthStart),
+          endDate: formatDate(monthEnd),
+        },
+      });
+
+      if (error) throw error;
+
+      const allTransactions = [
+        ...(data.contasAReceber || []).map((item: any) => ({
+          id: item.id,
+          type: 'income' as const,
+          amount: item.valor || 0,
+          description: item.descricao || item.historico || 'Conta a Receber',
+          date: item.data_competencia || item.data_vencimento,
+          status: item.situacao || item.status,
+          category: {
+            name: item.categoria?.descricao || 'Receita',
+            color: '#22c55e',
+          },
+        })),
+        ...(data.contasAPagar || []).map((item: any) => ({
+          id: item.id,
+          type: 'expense' as const,
+          amount: item.valor || 0,
+          description: item.descricao || item.historico || 'Conta a Pagar',
+          date: item.data_competencia || item.data_vencimento,
+          status: item.situacao || item.status,
+          category: {
+            name: item.categoria?.descricao || 'Despesa',
+            color: '#ef4444',
+          },
+        })),
+      ];
+
+      setTransactions(allTransactions);
+      setFilteredTransactions(allTransactions);
+    } catch (error: any) {
+      console.error("Error loading transactions:", error);
+      toast.error("Erro ao carregar lançamentos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterTransactions = () => {
+    let filtered = [...transactions];
+
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(t => 
+        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.category?.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Filter by date range
+    if (startDate) {
+      filtered = filtered.filter(t => t.date >= startDate);
+    }
+    if (endDate) {
+      filtered = filtered.filter(t => t.date <= endDate);
+    }
+
+    // Sort by date descending
+    filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    setFilteredTransactions(filtered);
+  };
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setStartDate("");
+    setEndDate("");
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold">Lançamentos</h2>
+        <p className="text-muted-foreground mt-2">
+          Visualize todos os lançamentos de receitas e despesas
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+          <CardDescription>
+            Filtre os lançamentos por descrição, categoria ou período
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por descrição ou categoria..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div>
+              <Input
+                type="date"
+                placeholder="Data inicial"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Input
+                type="date"
+                placeholder="Data final"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+          {(searchTerm || startDate || endDate) && (
+            <Button onClick={clearFilters} variant="outline" size="sm" className="mt-4">
+              Limpar Filtros
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {filteredTransactions.length} Lançamento(s)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredTransactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Nenhum lançamento encontrado
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredTransactions.map((transaction) => (
+                <div
+                  key={transaction.id}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className={`p-2 rounded-full ${
+                      transaction.type === 'income' 
+                        ? 'bg-green-100 text-green-600' 
+                        : 'bg-red-100 text-red-600'
+                    }`}>
+                      {transaction.type === 'income' ? (
+                        <ArrowUpCircle className="h-5 w-5" />
+                      ) : (
+                        <ArrowDownCircle className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{transaction.description}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {formatDate(transaction.date)}
+                        </span>
+                        {transaction.category && (
+                          <Badge variant="outline" className="text-xs">
+                            {transaction.category.name}
+                          </Badge>
+                        )}
+                        {transaction.status && (
+                          <Badge variant="secondary" className="text-xs">
+                            {transaction.status}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`text-lg font-semibold ${
+                    transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {transaction.type === 'income' ? '+' : '-'} {formatCurrency(transaction.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};

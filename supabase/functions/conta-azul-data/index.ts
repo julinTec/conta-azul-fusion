@@ -85,6 +85,14 @@ serve(async (req) => {
       pagar: pagarItems.length,
     });
 
+    // Log sample items to see structure
+    if (receberItems.length > 0) {
+      console.log('Sample receber item:', JSON.stringify(receberItems[0], null, 2));
+    }
+    if (pagarItems.length > 0) {
+      console.log('Sample pagar item:', JSON.stringify(pagarItems[0], null, 2));
+    }
+
     return new Response(
       JSON.stringify({
         contasAReceber: receberItems,
