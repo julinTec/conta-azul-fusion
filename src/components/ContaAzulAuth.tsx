@@ -14,23 +14,7 @@ export const ContaAzulAuth = () => {
     authUrl.searchParams.append("state", crypto.randomUUID());
     authUrl.searchParams.append("scope", "openid profile aws.cognito.signin.user.admin");
 
-    const url = authUrl.toString();
-
-    // Prefer navigating the top window (outside the editor iframe)
-    try {
-      if (window.top && window.top !== window) {
-        window.top.location.href = url;
-        return;
-      }
-    } catch (_) {
-      // Some sandboxed iframes may block access to window.top; fallback below
-    }
-
-    // Fallback: open in a new tab. If blocked by popup blockers, use same-tab
-    const win = window.open(url, "_blank", "noopener,noreferrer");
-    if (!win) {
-      window.location.href = url;
-    }
+    window.location.href = authUrl.toString();
   };
 
   return (
