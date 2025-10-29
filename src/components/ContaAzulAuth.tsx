@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn } from "lucide-react";
 
-const CLIENT_ID = "6kn5q1mf2dgd465mbg2i36fvg2";
+const CLIENT_ID = "2imfke8a0e9jc4v9qm01r1m9s1";
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
 export const ContaAzulAuth = () => {
