@@ -21,55 +21,74 @@ serve(async (req) => {
 
     const baseUrl = 'https://api-v2.contaazul.com';
     
-    // Fetch contas a receber (income)
-    const receberUrl = new URL(`${baseUrl}/v1/financeiro/eventos-financeiros/contas-a-receber/buscar`);
-    receberUrl.searchParams.append('data_competencia_de', startDate);
-    receberUrl.searchParams.append('data_competencia_ate', endDate);
-    receberUrl.searchParams.append('tamanho_pagina', '100');
+    // Helper function to fetch all pages
+    const fetchAllPages = async (endpoint: string, params: Record<string, string>) => {
+      const allItems: any[] = [];
+      let page = 1;
+      
+      while (true) {
+        const url = new URL(`${baseUrl}${endpoint}`);
+        Object.entries({ ...params, pagina: page.toString(), tamanho_pagina: '100' }).forEach(([key, value]) => {
+          url.searchParams.append(key, value);
+        });
 
-    console.log('Fetching contas a receber:', receberUrl.toString());
+        console.log(`Fetching page ${page}:`, url.toString());
 
-    const receberResponse = await fetch(receberUrl.toString(), {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
+        const response = await fetch(url.toString(), {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
 
-    // Fetch contas a pagar (expenses)
-    const pagarUrl = new URL(`${baseUrl}/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar`);
-    pagarUrl.searchParams.append('data_competencia_de', startDate);
-    pagarUrl.searchParams.append('data_competencia_ate', endDate);
-    pagarUrl.searchParams.append('tamanho_pagina', '100');
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`API error on page ${page}:`, errorText);
+          throw new Error(`Failed to fetch data: ${response.status} - ${errorText}`);
+        }
 
-    console.log('Fetching contas a pagar:', pagarUrl.toString());
+        const data = await response.json();
+        const items = data?.itens || [];
+        
+        if (items.length === 0) {
+          break;
+        }
 
-    const pagarResponse = await fetch(pagarUrl.toString(), {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
+        allItems.push(...items);
+        console.log(`Page ${page} fetched: ${items.length} items`);
+        page++;
+      }
 
-    if (!receberResponse.ok || !pagarResponse.ok) {
-      const receberError = !receberResponse.ok ? await receberResponse.text() : null;
-      const pagarError = !pagarResponse.ok ? await pagarResponse.text() : null;
-      console.error('API errors:', { receberError, pagarError });
-      throw new Error('Failed to fetch data from Conta Azul API');
-    }
+      return allItems;
+    };
 
-    const receberData = await receberResponse.json();
-    const pagarData = await pagarResponse.json();
+    // Fetch contas a receber (income) - all pages
+    const receberItems = await fetchAllPages(
+      '/v1/financeiro/eventos-financeiros/contas-a-receber/buscar',
+      {
+        'data_vencimento_de': startDate,
+        'data_vencimento_ate': endDate,
+      }
+    );
 
-    console.log('Successfully fetched data:', {
-      receber: receberData?.itens?.length || 0,
-      pagar: pagarData?.itens?.length || 0,
+    // Fetch contas a pagar (expenses) - all pages
+    const pagarItems = await fetchAllPages(
+      '/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar',
+      {
+        'data_vencimento_de': startDate,
+        'data_vencimento_ate': endDate,
+      }
+    );
+
+    console.log('Successfully fetched all data:', {
+      receber: receberItems.length,
+      pagar: pagarItems.length,
     });
 
     return new Response(
       JSON.stringify({
-        contasAReceber: receberData?.itens || [],
-        contasAPagar: pagarData?.itens || [],
+        contasAReceber: receberItems,
+        contasAPagar: pagarItems,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
