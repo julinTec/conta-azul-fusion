@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { LogOut, LayoutDashboard, List } from "lucide-react";
 import { ContaAzulAuth } from "@/components/ContaAzulAuth";
 import { toast } from "sonner";
+import { getValidAccessToken } from "@/lib/contaAzulAuth";
 
 interface LayoutProps {
   children: ReactNode;
@@ -43,8 +44,8 @@ export const Layout = ({ children }: LayoutProps) => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const checkContaAzulToken = () => {
-    const token = localStorage.getItem("conta_azul_access_token");
+  const checkContaAzulToken = async () => {
+    const token = await getValidAccessToken();
     setHasContaAzulToken(!!token);
   };
 

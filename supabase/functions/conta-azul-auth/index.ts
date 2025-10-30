@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { code, redirectUri } = await req.json();
+    const { code, redirectUri, refreshToken } = await req.json();
     
     const clientId = Deno.env.get('CONTA_AZUL_CLIENT_ID');
     const clientSecret = Deno.env.get('CONTA_AZUL_CLIENT_SECRET');
@@ -20,9 +20,25 @@ serve(async (req) => {
       throw new Error('Conta Azul credentials not configured');
     }
 
-    console.log('Exchanging authorization code for access token');
+    let tokenParams: Record<string, string>;
 
-    // Exchange code for access token
+    if (refreshToken) {
+      console.log('Refreshing access token');
+      tokenParams = {
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      };
+    } else if (code) {
+      console.log('Exchanging authorization code for access token');
+      tokenParams = {
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri,
+      };
+    } else {
+      throw new Error('Either code or refreshToken is required');
+    }
+
     const tokenResponse = await fetch('https://auth.contaazul.com/oauth2/token', {
       method: 'POST',
       headers: {
@@ -32,16 +48,14 @@ serve(async (req) => {
       body: new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: redirectUri,
+        ...tokenParams,
       }),
     });
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('Token exchange failed:', errorText);
-      throw new Error(`Failed to exchange code: ${errorText}`);
+      console.error('Token exchange/refresh failed:', errorText);
+      throw new Error(`Failed to exchange/refresh token: ${errorText}`);
     }
 
     const tokenData = await tokenResponse.json();

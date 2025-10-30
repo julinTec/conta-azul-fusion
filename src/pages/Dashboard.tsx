@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Calendar, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getValidAccessToken } from "@/lib/contaAzulAuth";
 
 export const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -21,8 +22,11 @@ export const Dashboard = () => {
   }, []);
 
   const loadDashboardData = async () => {
-    const token = localStorage.getItem("conta_azul_access_token");
-    if (!token) return;
+    const token = await getValidAccessToken();
+    if (!token) {
+      toast.error("Sessão expirada. Por favor, reconecte ao Conta Azul.");
+      return;
+    }
 
     try {
       setLoading(true);

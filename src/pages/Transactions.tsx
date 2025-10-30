@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getValidAccessToken } from "@/lib/contaAzulAuth";
 
 interface Transaction {
   id: string;
@@ -37,8 +38,11 @@ export const Transactions = () => {
   }, [searchTerm, startDate, endDate, transactions]);
 
   const loadTransactions = async () => {
-    const token = localStorage.getItem("conta_azul_access_token");
-    if (!token) return;
+    const token = await getValidAccessToken();
+    if (!token) {
+      toast.error("Sessão expirada. Por favor, reconecte ao Conta Azul.");
+      return;
+    }
 
     try {
       setLoading(true);
