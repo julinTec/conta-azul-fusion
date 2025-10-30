@@ -63,7 +63,7 @@ export const Transactions = () => {
         ...(data.contasAReceber || []).map((item: any) => ({
           id: item.id,
           type: 'income' as const,
-          amount: item.valor || 0,
+          amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
           description: item.descricao || item.historico || 'Conta a Receber',
           date: item.data_competencia || item.data_vencimento,
           status: item.situacao || item.status,
@@ -75,7 +75,7 @@ export const Transactions = () => {
         ...(data.contasAPagar || []).map((item: any) => ({
           id: item.id,
           type: 'expense' as const,
-          amount: item.valor || 0,
+          amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
           description: item.descricao || item.historico || 'Conta a Pagar',
           date: item.data_competencia || item.data_vencimento,
           status: item.situacao || item.status,
