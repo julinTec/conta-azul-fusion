@@ -20,19 +20,17 @@ serve(async (req) => {
     console.log('Fetching Conta Azul data from', startDate, 'to', endDate);
 
     const baseUrl = 'https://api-v2.contaazul.com';
-    
-    // Helper function to fetch all pages
-    const fetchAllPages = async (endpoint: string, params: Record<string, string>) => {
+
+    // Helper function para buscar todas as páginas de um endpoint
+    const fetchAllPages = async (endpoint: string, params: Record<string, string>, tipo: 'pagar' | 'receber') => {
       const allItems: any[] = [];
       let page = 1;
-      
+
       while (true) {
         const url = new URL(`${baseUrl}${endpoint}`);
         Object.entries({ ...params, pagina: page.toString(), tamanho_pagina: '100' }).forEach(([key, value]) => {
           url.searchParams.append(key, value);
         });
-
-        console.log(`Fetching page ${page}:`, url.toString());
 
         const response = await fetch(url.toString(), {
           headers: {
@@ -43,55 +41,57 @@ serve(async (req) => {
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`API error on page ${page}:`, errorText);
           throw new Error(`Failed to fetch data: ${response.status} - ${errorText}`);
         }
 
         const data = await response.json();
-        const items = data?.itens || [];
-        
-        if (items.length === 0) {
-          break;
-        }
+        const itemsRaw = data?.itens || [];
+        if (itemsRaw.length === 0) break;
 
-        allItems.push(...items);
-        console.log(`Page ${page} fetched: ${items.length} items`);
+        // Mapear campos corretamente
+        const itemsMapped = itemsRaw.map((item: any) => ({
+          id: item.id,
+          descricao: item.descricao,
+          entidade: item.fornecedor?.nome || null, // fornecedor ou cliente
+          data_vencimento: item.data_vencimento,
+          status: item.status_traduzido,
+          total: item.total || 0,
+          pago: item.pago || 0,
+          nao_pago: item.nao_pago || 0,
+          tipo: tipo // para diferenciar no dashboard
+        }));
+
+        allItems.push(...itemsMapped);
         page++;
       }
 
       return allItems;
     };
 
-    // Fetch contas a receber (income) - all pages
+    // Parâmetros de filtro de datas
+    const params = {
+      'data_vencimento_de': startDate,
+      'data_vencimento_ate': endDate,
+    };
+
+    // Buscar contas a receber
     const receberItems = await fetchAllPages(
       '/v1/financeiro/eventos-financeiros/contas-a-receber/buscar',
-      {
-        'data_vencimento_de': startDate,
-        'data_vencimento_ate': endDate,
-      }
+      params,
+      'receber'
     );
 
-    // Fetch contas a pagar (expenses) - all pages
+    // Buscar contas a pagar
     const pagarItems = await fetchAllPages(
       '/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar',
-      {
-        'data_vencimento_de': startDate,
-        'data_vencimento_ate': endDate,
-      }
+      params,
+      'pagar'
     );
 
     console.log('Successfully fetched all data:', {
       receber: receberItems.length,
       pagar: pagarItems.length,
     });
-
-    // Log sample items to see structure
-    if (receberItems.length > 0) {
-      console.log('Sample receber item:', JSON.stringify(receberItems[0], null, 2));
-    }
-    if (pagarItems.length > 0) {
-      console.log('Sample pagar item:', JSON.stringify(pagarItems[0], null, 2));
-    }
 
     return new Response(
       JSON.stringify({
@@ -100,6 +100,7 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
     console.error('Error in conta-azul-data:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
