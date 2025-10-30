@@ -35,7 +35,6 @@ export const Dashboard = () => {
 
       const formatDate = (date: Date) => date.toISOString().split('T')[0];
 
-      // Fetch current month data
       const { data: currentData, error: currentError } = await supabase.functions.invoke("conta-azul-data", {
         body: {
           accessToken: token,
@@ -46,7 +45,6 @@ export const Dashboard = () => {
 
       if (currentError) throw currentError;
 
-      // Fetch previous month data
       const { data: previousData, error: previousError } = await supabase.functions.invoke("conta-azul-data", {
         body: {
           accessToken: token,
@@ -57,19 +55,17 @@ export const Dashboard = () => {
 
       if (previousError) throw previousError;
 
-      // Calculate current month stats
       const currentIncome = (currentData.contasAReceber || [])
-        .reduce((sum: number, item: any) => sum + (item.valor || 0), 0);
+        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
       
       const currentExpense = (currentData.contasAPagar || [])
-        .reduce((sum: number, item: any) => sum + (item.valor || 0), 0);
+        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
 
-      // Calculate previous month balance
       const previousIncome = (previousData.contasAReceber || [])
-        .reduce((sum: number, item: any) => sum + (item.valor || 0), 0);
+        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
       
       const previousExpense = (previousData.contasAPagar || [])
-        .reduce((sum: number, item: any) => sum + (item.valor || 0), 0);
+        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
 
       const previousBalance = previousIncome - previousExpense;
       const currentBalance = currentIncome - currentExpense;
@@ -81,7 +77,6 @@ export const Dashboard = () => {
         previousBalance,
       });
 
-      // Prepare chart data - last 6 months
       const months = [];
       for (let i = 5; i >= 0; i--) {
         const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -92,7 +87,6 @@ export const Dashboard = () => {
         });
       }
 
-      // For now, just add current and previous month data
       months[months.length - 2].receitas = previousIncome;
       months[months.length - 2].despesas = previousExpense;
       months[months.length - 1].receitas = currentIncome;
