@@ -5,9 +5,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Calendar, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { getValidAccessToken } from "@/lib/contaAzulAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { AdminPanel } from "@/components/AdminPanel";
 
 export const Dashboard = () => {
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [stats, setStats] = useState({
     totalIncome: 0,
     totalExpense: 0,
@@ -22,12 +24,6 @@ export const Dashboard = () => {
   }, []);
 
   const loadDashboardData = async () => {
-    const token = await getValidAccessToken();
-    if (!token) {
-      toast.error("Sessão expirada. Por favor, reconecte ao Conta Azul.");
-      return;
-    }
-
     try {
       setLoading(true);
       
@@ -37,39 +33,48 @@ export const Dashboard = () => {
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      const formatDate = (date: Date) => date.toISOString().split('T')[0];
+      // Buscar transações do banco de dados
+      const { data: transactions, error } = await supabase
+        .from('synced_transactions')
+        .select('*')
+        .gte('transaction_date', previousMonthStart.toISOString().split('T')[0])
+        .lte('transaction_date', currentMonthEnd.toISOString().split('T')[0]);
 
-      const { data: currentData, error: currentError } = await supabase.functions.invoke("conta-azul-data", {
-        body: {
-          accessToken: token,
-          startDate: formatDate(currentMonthStart),
-          endDate: formatDate(currentMonthEnd),
-        },
+      if (error) throw error;
+
+      if (!transactions || transactions.length === 0) {
+        toast.info("Nenhum dado disponível. Aguarde a sincronização.");
+        setLoading(false);
+        return;
+      }
+
+      // Filtrar transações do mês atual
+      const currentTransactions = transactions.filter(t => {
+        const date = new Date(t.transaction_date);
+        return date >= currentMonthStart && date <= currentMonthEnd;
       });
 
-      if (currentError) throw currentError;
-
-      const { data: previousData, error: previousError } = await supabase.functions.invoke("conta-azul-data", {
-        body: {
-          accessToken: token,
-          startDate: formatDate(previousMonthStart),
-          endDate: formatDate(previousMonthEnd),
-        },
+      // Filtrar transações do mês anterior
+      const previousTransactions = transactions.filter(t => {
+        const date = new Date(t.transaction_date);
+        return date >= previousMonthStart && date <= previousMonthEnd;
       });
 
-      if (previousError) throw previousError;
-
-      const currentIncome = (currentData.contasAReceber || [])
-        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
+      const currentIncome = currentTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
       
-      const currentExpense = (currentData.contasAPagar || [])
-        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
+      const currentExpense = currentTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
-      const previousIncome = (previousData.contasAReceber || [])
-        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
+      const previousIncome = previousTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
       
-      const previousExpense = (previousData.contasAPagar || [])
-        .reduce((sum: number, item: any) => sum + (item.total ?? item.pago ?? item.nao_pago ?? 0), 0);
+      const previousExpense = previousTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
       const previousBalance = previousIncome - previousExpense;
       const currentBalance = currentIncome - currentExpense;
@@ -81,20 +86,32 @@ export const Dashboard = () => {
         previousBalance,
       });
 
+      // Construir dados do gráfico
       const months = [];
       for (let i = 5; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        
+        const monthTransactions = transactions.filter(t => {
+          const date = new Date(t.transaction_date);
+          return date >= monthStart && date <= monthEnd;
+        });
+
+        const income = monthTransactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+        
+        const expense = monthTransactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
         months.push({
-          month: date.toLocaleDateString('pt-BR', { month: 'short' }),
-          receitas: 0,
-          despesas: 0,
+          month: monthDate.toLocaleDateString('pt-BR', { month: 'short' }),
+          receitas: income,
+          despesas: expense,
         });
       }
-
-      months[months.length - 2].receitas = previousIncome;
-      months[months.length - 2].despesas = previousExpense;
-      months[months.length - 1].receitas = currentIncome;
-      months[months.length - 1].despesas = currentExpense;
 
       setChartData(months);
     } catch (error: any) {
@@ -105,7 +122,7 @@ export const Dashboard = () => {
     }
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -115,6 +132,7 @@ export const Dashboard = () => {
 
   return (
     <div className="space-y-8">
+      {isAdmin && <AdminPanel />}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold">Dashboard Financeiro</h2>

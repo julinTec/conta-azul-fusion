@@ -1,52 +1,80 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
-const REDIRECT_URI = `${window.location.origin}/auth/callback`;
-
 export default function AuthCallback() {
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState("Processando autenticação...");
 
   useEffect(() => {
     const handleCallback = async () => {
+      const code = searchParams.get("code");
+
+      if (!code) {
+        toast.error("Código de autorização não encontrado");
+        navigate("/");
+        return;
+      }
+
       try {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get("code");
-
-        if (!code) {
-          throw new Error("Código de autorização não encontrado");
-        }
-
         setStatus("Obtendo token de acesso...");
-
-        // Exchange code for access token
-        const { data, error } = await supabase.functions.invoke("conta-azul-auth", {
-          body: { code, redirectUri: REDIRECT_URI },
+        const redirectUri = `${window.location.origin}/auth/callback`;
+        
+        const { data: tokenData, error } = await supabase.functions.invoke("conta-azul-auth", {
+          body: {
+            code,
+            redirectUri,
+          },
         });
 
         if (error) throw error;
 
-        // Store tokens in localStorage
-        localStorage.setItem("conta_azul_access_token", data.access_token);
-        localStorage.setItem("conta_azul_refresh_token", data.refresh_token);
-        localStorage.setItem("conta_azul_token_expires_at", 
-          String(Date.now() + data.expires_in * 1000)
-        );
+        // Verificar se o usuário é admin
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Usuário não autenticado");
+
+        const { data: roles } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
+
+        if (!roles) {
+          toast.error("Apenas administradores podem conectar ao Conta Azul");
+          navigate("/dashboard");
+          return;
+        }
+
+        setStatus("Salvando configuração...");
+
+        // Salvar configuração no banco (apenas para admins)
+        const { error: configError } = await supabase
+          .from('conta_azul_config')
+          .upsert({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+            updated_by: user.id,
+          });
+
+        if (configError) throw configError;
 
         toast.success("Conectado ao Conta Azul com sucesso!");
-        navigate("/");
+        toast.info("Clique em 'Sincronizar Dados' para atualizar as transações");
+        navigate("/dashboard");
       } catch (error: any) {
-        console.error("Error in auth callback:", error);
-        toast.error("Erro ao conectar com Conta Azul: " + error.message);
-        navigate("/");
+        console.error("Error during authentication:", error);
+        toast.error(error.message || "Erro ao conectar com Conta Azul");
+        navigate("/dashboard");
       }
     };
 
     handleCallback();
-  }, [navigate]);
+  }, [searchParams, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5">

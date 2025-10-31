@@ -4,9 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { LogOut, LayoutDashboard, List } from "lucide-react";
-import { ContaAzulAuth } from "@/components/ContaAzulAuth";
 import { toast } from "sonner";
-import { getValidAccessToken } from "@/lib/contaAzulAuth";
 
 interface LayoutProps {
   children: ReactNode;
@@ -17,13 +15,11 @@ export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hasContaAzulToken, setHasContaAzulToken] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
-        checkContaAzulToken();
       } else {
         navigate("/auth");
       }
@@ -35,7 +31,6 @@ export const Layout = ({ children }: LayoutProps) => {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        checkContaAzulToken();
       } else {
         navigate("/auth");
       }
@@ -43,20 +38,6 @@ export const Layout = ({ children }: LayoutProps) => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
-
-  const checkContaAzulToken = async () => {
-    const token = await getValidAccessToken();
-    setHasContaAzulToken(!!token);
-  };
-
-  const handleDisconnect = () => {
-    localStorage.removeItem("conta_azul_access_token");
-    localStorage.removeItem("conta_azul_refresh_token");
-    localStorage.removeItem("conta_azul_token_expires_at");
-    setHasContaAzulToken(false);
-    toast.success("Desconectado do Conta Azul");
-    navigate("/");
-  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -80,34 +61,27 @@ export const Layout = ({ children }: LayoutProps) => {
             FinanceFlow
           </h1>
           <div className="flex items-center gap-4">
-            {hasContaAzulToken && (
-              <nav className="flex items-center gap-2">
-                <Link to="/dashboard">
-                  <Button 
-                    variant={location.pathname === "/dashboard" ? "default" : "ghost"} 
-                    size="sm"
-                  >
-                    <LayoutDashboard className="h-4 w-4 mr-2" />
-                    Dashboard
-                  </Button>
-                </Link>
-                <Link to="/transactions">
-                  <Button 
-                    variant={location.pathname === "/transactions" ? "default" : "ghost"} 
-                    size="sm"
-                  >
-                    <List className="h-4 w-4 mr-2" />
-                    Lançamentos
-                  </Button>
-                </Link>
-              </nav>
-            )}
+            <nav className="flex items-center gap-2">
+              <Link to="/dashboard">
+                <Button 
+                  variant={location.pathname === "/dashboard" ? "default" : "ghost"} 
+                  size="sm"
+                >
+                  <LayoutDashboard className="h-4 w-4 mr-2" />
+                  Dashboard
+                </Button>
+              </Link>
+              <Link to="/transactions">
+                <Button 
+                  variant={location.pathname === "/transactions" ? "default" : "ghost"} 
+                  size="sm"
+                >
+                  <List className="h-4 w-4 mr-2" />
+                  Lançamentos
+                </Button>
+              </Link>
+            </nav>
             <span className="text-sm text-muted-foreground">{user?.email}</span>
-            {hasContaAzulToken && (
-              <Button onClick={handleDisconnect} variant="outline" size="sm">
-                Desconectar
-              </Button>
-            )}
             <Button onClick={handleSignOut} variant="outline" size="sm">
               <LogOut className="h-4 w-4 mr-2" />
               Sair
@@ -117,11 +91,7 @@ export const Layout = ({ children }: LayoutProps) => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {!hasContaAzulToken ? (
-          <ContaAzulAuth />
-        ) : (
-          children
-        )}
+        {children}
       </main>
     </div>
   );

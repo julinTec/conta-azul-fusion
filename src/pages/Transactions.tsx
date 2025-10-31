@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { getValidAccessToken } from "@/lib/contaAzulAuth";
+import { useUserRole } from "@/hooks/useUserRole";
+import { AdminPanel } from "@/components/AdminPanel";
 
 interface Transaction {
   id: string;
@@ -22,6 +23,7 @@ interface Transaction {
 }
 
 export const Transactions = () => {
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,57 +40,35 @@ export const Transactions = () => {
   }, [searchTerm, startDate, endDate, transactions]);
 
   const loadTransactions = async () => {
-    const token = await getValidAccessToken();
-    if (!token) {
-      toast.error("Sessão expirada. Por favor, reconecte ao Conta Azul.");
-      return;
-    }
-
     try {
       setLoading(true);
       
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-      const formatDate = (date: Date) => date.toISOString().split('T')[0];
-
-      const { data, error } = await supabase.functions.invoke("conta-azul-data", {
-        body: {
-          accessToken: token,
-          startDate: formatDate(monthStart),
-          endDate: formatDate(monthEnd),
-        },
-      });
+      // Buscar transações do banco de dados
+      const { data, error } = await supabase
+        .from('synced_transactions')
+        .select('*')
+        .order('transaction_date', { ascending: false });
 
       if (error) throw error;
 
-      const allTransactions = [
-        ...(data.contasAReceber || []).map((item: any) => ({
-          id: item.id,
-          type: 'income' as const,
-          amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
-          description: item.descricao || item.historico || 'Conta a Receber',
-          date: item.data_competencia || item.data_vencimento,
-          status: item.situacao || item.status,
-          category: {
-            name: item.categoria?.descricao || 'Receita',
-            color: '#22c55e',
-          },
-        })),
-        ...(data.contasAPagar || []).map((item: any) => ({
-          id: item.id,
-          type: 'expense' as const,
-          amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
-          description: item.descricao || item.historico || 'Conta a Pagar',
-          date: item.data_competencia || item.data_vencimento,
-          status: item.situacao || item.status,
-          category: {
-            name: item.categoria?.descricao || 'Despesa',
-            color: '#ef4444',
-          },
-        })),
-      ];
+      if (!data || data.length === 0) {
+        toast.info("Nenhum dado disponível. Aguarde a sincronização.");
+        setLoading(false);
+        return;
+      }
+
+      const allTransactions = data.map((item: any) => ({
+        id: item.id,
+        type: item.type as 'income' | 'expense',
+        amount: parseFloat(item.amount),
+        description: item.description,
+        date: item.transaction_date,
+        status: item.status,
+        category: {
+          name: item.category_name || (item.type === 'income' ? 'Receita' : 'Despesa'),
+          color: item.category_color || (item.type === 'income' ? '#22c55e' : '#ef4444'),
+        },
+      }));
 
       setTransactions(allTransactions);
       setFilteredTransactions(allTransactions);
@@ -142,7 +122,7 @@ export const Transactions = () => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -152,6 +132,7 @@ export const Transactions = () => {
 
   return (
     <div className="space-y-6">
+      {isAdmin && <AdminPanel />}
       <div>
         <h2 className="text-3xl font-bold">Lançamentos</h2>
         <p className="text-muted-foreground mt-2">

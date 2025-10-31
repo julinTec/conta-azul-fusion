@@ -49,6 +49,36 @@ export type Database = {
           },
         ]
       }
+      conta_azul_config: {
+        Row: {
+          access_token: string
+          created_at: string
+          expires_at: string
+          id: string
+          refresh_token: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          refresh_token: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          refresh_token?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -67,6 +97,51 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      synced_transactions: {
+        Row: {
+          amount: number
+          category_color: string | null
+          category_name: string | null
+          description: string
+          entity_name: string | null
+          external_id: string
+          id: string
+          raw_data: Json | null
+          status: string | null
+          synced_at: string
+          transaction_date: string
+          type: string
+        }
+        Insert: {
+          amount: number
+          category_color?: string | null
+          category_name?: string | null
+          description: string
+          entity_name?: string | null
+          external_id: string
+          id?: string
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string
+          transaction_date: string
+          type: string
+        }
+        Update: {
+          amount?: number
+          category_color?: string | null
+          category_name?: string | null
+          description?: string
+          entity_name?: string | null
+          external_id?: string
+          id?: string
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string
+          transaction_date?: string
+          type?: string
         }
         Relationships: []
       }
@@ -121,15 +196,42 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -256,6 +358,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
