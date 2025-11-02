@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn, RefreshCw, Database } from "lucide-react";
@@ -12,9 +12,9 @@ export const AdminPanel = () => {
   const [syncing, setSyncing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     checkConnection();
-  });
+  }, []);
 
   const checkConnection = async () => {
     const { data } = await supabase
