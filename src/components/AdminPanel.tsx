@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogIn, RefreshCw, Database } from "lucide-react";
+import { LogIn, RefreshCw, Database, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -48,6 +48,29 @@ export const AdminPanel = () => {
     const win = window.open(url, "_blank", "noopener,noreferrer");
     if (!win) {
       window.location.href = url;
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      // Limpar localStorage
+      localStorage.removeItem("conta_azul_access_token");
+      localStorage.removeItem("conta_azul_refresh_token");
+      localStorage.removeItem("conta_azul_token_expires_at");
+
+      // Remover configuração do banco
+      const { error } = await supabase
+        .from('conta_azul_config')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // deleta todos os registros
+
+      if (error) throw error;
+
+      setHasConnection(false);
+      toast.success('Conexão com Conta Azul removida. Você pode reconectar agora.');
+    } catch (error: any) {
+      console.error('Error disconnecting:', error);
+      toast.error('Erro ao desconectar: ' + error.message);
     }
   };
 
@@ -99,9 +122,15 @@ export const AdminPanel = () => {
                   Conta Azul conectado
                 </span>
               </div>
-              <Button onClick={handleConnect} variant="outline" size="sm">
-                Reconectar
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleDisconnect} variant="outline" size="sm">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Desconectar
+                </Button>
+                <Button onClick={handleConnect} variant="outline" size="sm">
+                  Reconectar
+                </Button>
+              </div>
             </div>
 
             <Button 
