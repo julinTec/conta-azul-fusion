@@ -51,6 +51,37 @@ export const AdminPanel = () => {
     }
   };
 
+  const handleReconnect = () => {
+    // Limpa os tokens antes de redirecionar
+    localStorage.removeItem("conta_azul_access_token");
+    localStorage.removeItem("conta_azul_refresh_token");
+    localStorage.removeItem("conta_azul_token_expires_at");
+
+    const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
+    authUrl.searchParams.append("response_type", "code");
+    authUrl.searchParams.append("client_id", CLIENT_ID);
+    authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
+    authUrl.searchParams.append("state", crypto.randomUUID());
+    authUrl.searchParams.append("scope", "openid profile aws.cognito.signin.user.admin");
+    authUrl.searchParams.append("prompt", "consent"); // Força mostrar tela de consentimento
+
+    const url = authUrl.toString();
+
+    try {
+      if (window.top && window.top !== window) {
+        window.top.location.href = url;
+        return;
+      }
+    } catch (_) {
+      // Fallback
+    }
+
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win) {
+      window.location.href = url;
+    }
+  };
+
   const handleDisconnect = async () => {
     try {
       // Limpar localStorage
@@ -127,7 +158,7 @@ export const AdminPanel = () => {
                   <LogOut className="mr-2 h-4 w-4" />
                   Desconectar
                 </Button>
-                <Button onClick={handleConnect} variant="outline" size="sm">
+                <Button onClick={handleReconnect} variant="outline" size="sm">
                   Reconectar
                 </Button>
               </div>
