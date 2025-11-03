@@ -13,6 +13,8 @@ export const ContaAzulAuth = () => {
     authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
     authUrl.searchParams.append("state", crypto.randomUUID());
     authUrl.searchParams.append("scope", "openid profile aws.cognito.signin.user.admin");
+    authUrl.searchParams.append("prompt", "login");
+    authUrl.searchParams.append("max_age", "0");
 
     const url = authUrl.toString();
 
