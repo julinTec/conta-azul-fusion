@@ -47,25 +47,22 @@ export const Dashboard = () => {
         return;
       }
 
-      // Filtrar transações do mês atual
-      const currentTransactions = transactions.filter(t => {
-        const date = new Date(t.transaction_date);
-        return date >= currentMonthStart && date <= currentMonthEnd;
-      });
+      // Calcular totais gerais
+      const totalIncome = transactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+      
+      const totalExpense = transactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
-      // Filtrar transações do mês anterior
+      const balance = totalIncome - totalExpense;
+
+      // Calcular mês anterior para comparação
       const previousTransactions = transactions.filter(t => {
         const date = new Date(t.transaction_date);
         return date >= previousMonthStart && date <= previousMonthEnd;
       });
-
-      const currentIncome = currentTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
-      
-      const currentExpense = currentTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
       const previousIncome = previousTransactions
         .filter(t => t.type === 'income')
@@ -76,12 +73,11 @@ export const Dashboard = () => {
         .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
       const previousBalance = previousIncome - previousExpense;
-      const currentBalance = currentIncome - currentExpense;
 
       setStats({
-        totalIncome: currentIncome,
-        totalExpense: currentExpense,
-        balance: currentBalance,
+        totalIncome,
+        totalExpense,
+        balance,
         previousBalance,
       });
 

@@ -37,7 +37,7 @@ export const DashboardStats = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Este mês</p>
+          <p className="text-xs text-muted-foreground mt-1">Total geral</p>
         </CardContent>
       </Card>
 
@@ -50,7 +50,7 @@ export const DashboardStats = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpense)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Este mês</p>
+          <p className="text-xs text-muted-foreground mt-1">Total geral</p>
         </CardContent>
       </Card>
 
