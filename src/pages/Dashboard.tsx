@@ -37,6 +37,7 @@ export const Dashboard = () => {
       const { data: transactions, error } = await supabase
         .from('synced_transactions')
         .select('*')
+        .eq('status', 'RECEBIDO')
         .order('transaction_date', { ascending: false });
 
       if (error) throw error;
