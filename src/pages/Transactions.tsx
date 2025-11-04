@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
+import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
@@ -123,6 +124,45 @@ export const Transactions = () => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  const exportToExcel = () => {
+    if (filteredTransactions.length === 0) {
+      toast.error("Não há lançamentos para exportar");
+      return;
+    }
+
+    // Preparar dados para exportação
+    const exportData = filteredTransactions.map(transaction => ({
+      'Data': formatDate(transaction.date),
+      'Tipo': transaction.type === 'income' ? 'Recebimento' : 'Despesa',
+      'Descrição': transaction.description,
+      'Categoria': transaction.category?.name || '-',
+      'Status': transaction.status || '-',
+      'Valor': transaction.amount,
+    }));
+
+    // Criar workbook e worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos');
+
+    // Ajustar largura das colunas
+    const colWidths = [
+      { wch: 12 }, // Data
+      { wch: 15 }, // Tipo
+      { wch: 40 }, // Descrição
+      { wch: 20 }, // Categoria
+      { wch: 15 }, // Status
+      { wch: 15 }, // Valor
+    ];
+    ws['!cols'] = colWidths;
+
+    // Gerar arquivo
+    const fileName = `lancamentos_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    toast.success(`Relatório exportado com sucesso! ${filteredTransactions.length} lançamento(s)`);
+  };
+
   if (loading || roleLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -193,11 +233,17 @@ export const Transactions = () => {
               />
             </div>
           </div>
-          {(searchTerm || startDate || endDate) && (
-            <Button onClick={clearFilters} variant="outline" size="sm" className="mt-4">
-              Limpar Filtros
+          <div className="flex gap-2 mt-4">
+            {(searchTerm || startDate || endDate) && (
+              <Button onClick={clearFilters} variant="outline" size="sm">
+                Limpar Filtros
+              </Button>
+            )}
+            <Button onClick={exportToExcel} variant="default" size="sm" className="gap-2">
+              <FileDown className="h-4 w-4" />
+              Exportar para Excel
             </Button>
-          )}
+          </div>
         </CardContent>
       </Card>
 
