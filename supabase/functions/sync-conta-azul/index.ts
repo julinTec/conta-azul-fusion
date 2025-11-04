@@ -145,9 +145,17 @@ serve(async (req) => {
       fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', params),
     ]);
 
+    // Filtrar apenas itens com status "RECEBIDO"
+    const filteredReceberItems = receberItems.filter((item: any) => 
+      item.status_traduzido === 'RECEBIDO'
+    );
+    const filteredPagarItems = pagarItems.filter((item: any) => 
+      item.status_traduzido === 'RECEBIDO'
+    );
+
     // Mapear para o formato da tabela
     const transactions = [
-      ...receberItems.map((item: any) => ({
+      ...filteredReceberItems.map((item: any) => ({
         external_id: `receber_${item.id}`,
         type: 'income',
         amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
@@ -159,7 +167,7 @@ serve(async (req) => {
         entity_name: item.fornecedor?.nome || null,
         raw_data: item,
       })),
-      ...pagarItems.map((item: any) => ({
+      ...filteredPagarItems.map((item: any) => ({
         external_id: `pagar_${item.id}`,
         type: 'expense',
         amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
