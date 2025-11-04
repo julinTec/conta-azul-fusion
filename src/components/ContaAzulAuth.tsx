@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { LogIn } from "lucide-react";
 
 const CLIENT_ID = "2imfke8a0e9jc4v9qm01r1m9s1";
-const REDIRECT_URI = `${window.location.origin}/auth/callback`;
+const REDIRECT_URI = "https://e67bcf1c-e649-449f-b1c3-6b34a01b3f70.lovableproject.com/auth/callback";
 
 export const ContaAzulAuth = () => {
   const handleConnect = () => {
