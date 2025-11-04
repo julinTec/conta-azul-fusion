@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
 import { AdminPanel } from "@/components/AdminPanel";
+import { TransactionStats } from "@/components/TransactionStats";
 
 interface Transaction {
   id: string;
@@ -130,6 +131,11 @@ export const Transactions = () => {
     );
   }
 
+  const incomeTransactions = filteredTransactions.filter(t => t.type === 'income');
+  const expenseTransactions = filteredTransactions.filter(t => t.type === 'expense');
+  const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+
   return (
     <div className="space-y-6">
       {isAdmin && <AdminPanel />}
@@ -139,6 +145,13 @@ export const Transactions = () => {
           Visualize todos os lançamentos de receitas e despesas
         </p>
       </div>
+
+      <TransactionStats
+        incomeCount={incomeTransactions.length}
+        expenseCount={expenseTransactions.length}
+        totalIncome={totalIncome}
+        totalExpense={totalExpense}
+      />
 
       <Card>
         <CardHeader>

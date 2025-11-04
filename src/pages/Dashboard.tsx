@@ -33,12 +33,11 @@ export const Dashboard = () => {
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      // Buscar transações do banco de dados
+      // Buscar todas as transações para construir o gráfico
       const { data: transactions, error } = await supabase
         .from('synced_transactions')
         .select('*')
-        .gte('transaction_date', previousMonthStart.toISOString().split('T')[0])
-        .lte('transaction_date', currentMonthEnd.toISOString().split('T')[0]);
+        .order('transaction_date', { ascending: false });
 
       if (error) throw error;
 
