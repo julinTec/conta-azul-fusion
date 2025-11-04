@@ -3,8 +3,9 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, List } from "lucide-react";
+import { LogOut, LayoutDashboard, List, Users } from "lucide-react";
 import { toast } from "sonner";
+import { useUserRole } from "@/hooks/useUserRole";
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,6 +16,7 @@ export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isAdmin, loading: roleLoading } = useUserRole();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -45,7 +47,7 @@ export const Layout = ({ children }: LayoutProps) => {
     navigate("/auth");
   };
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -80,6 +82,17 @@ export const Layout = ({ children }: LayoutProps) => {
                   Lançamentos
                 </Button>
               </Link>
+              {isAdmin && (
+                <Link to="/users">
+                  <Button 
+                    variant={location.pathname === "/users" ? "default" : "ghost"} 
+                    size="sm"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Usuários
+                  </Button>
+                </Link>
+              )}
             </nav>
             <span className="text-sm text-muted-foreground">{user?.email}</span>
             <Button onClick={handleSignOut} variant="outline" size="sm">
