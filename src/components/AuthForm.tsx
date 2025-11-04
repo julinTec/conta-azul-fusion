@@ -8,42 +8,24 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
 export const AuthForm = () => {
-  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-        if (error) throw error;
-        toast.success("Login realizado com sucesso!");
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-            },
-            emailRedirectTo: `${window.location.origin}/`,
-          },
-        });
-
-        if (error) throw error;
-        toast.success("Conta criada com sucesso!");
-      }
+      if (error) throw error;
+      toast.success("Login realizado com sucesso!");
     } catch (error: any) {
-      toast.error(error.message || "Ocorreu um erro");
+      toast.error(error.message || "Erro ao fazer login. Verifique suas credenciais.");
     } finally {
       setLoading(false);
     }
@@ -57,25 +39,11 @@ export const AuthForm = () => {
             FinanceFlow
           </CardTitle>
           <CardDescription className="text-center">
-            {isLogin ? "Entre na sua conta" : "Crie sua conta"}
+            Faça login para acessar o sistema
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleAuth} className="space-y-4">
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome Completo</Label>
-                <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="Seu nome"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required={!isLogin}
-                  disabled={loading}
-                />
-              </div>
-            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -109,26 +77,15 @@ export const AuthForm = () => {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processando...
+                  Entrando...
                 </>
-              ) : isLogin ? (
-                "Entrar"
               ) : (
-                "Criar Conta"
+                "Entrar"
               )}
             </Button>
           </form>
-          <div className="mt-4 text-center text-sm">
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:underline"
-              disabled={loading}
-            >
-              {isLogin
-                ? "Não tem uma conta? Criar conta"
-                : "Já tem uma conta? Entrar"}
-            </button>
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            <p>Caso não tenha acesso, entre em contato com o administrador</p>
           </div>
         </CardContent>
       </Card>
