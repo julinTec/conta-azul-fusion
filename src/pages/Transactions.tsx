@@ -7,8 +7,6 @@ import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown } fr
 import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useUserRole } from "@/hooks/useUserRole";
-import { AdminPanel } from "@/components/AdminPanel";
 import { TransactionStats } from "@/components/TransactionStats";
 
 interface Transaction {
@@ -25,7 +23,6 @@ interface Transaction {
 }
 
 export const Transactions = () => {
-  const { isAdmin, loading: roleLoading } = useUserRole();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,7 +185,7 @@ export const Transactions = () => {
     toast.success(`Relatório exportado com sucesso! ${filteredTransactions.length} lançamento(s)`);
   };
 
-  if (loading || roleLoading) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -203,7 +200,6 @@ export const Transactions = () => {
 
   return (
     <div className="space-y-6">
-      {isAdmin && <AdminPanel />}
       <div>
         <h2 className="text-3xl font-bold">Lançamentos</h2>
         <p className="text-muted-foreground mt-2">

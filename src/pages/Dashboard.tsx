@@ -5,11 +5,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Calendar, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useUserRole } from "@/hooks/useUserRole";
-import { AdminPanel } from "@/components/AdminPanel";
 
 export const Dashboard = () => {
-  const { isAdmin, loading: roleLoading } = useUserRole();
   const [stats, setStats] = useState({
     totalIncome: 0,
     totalExpense: 0,
@@ -158,7 +155,7 @@ export const Dashboard = () => {
     }
   };
 
-  if (loading || roleLoading) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -168,7 +165,6 @@ export const Dashboard = () => {
 
   return (
     <div className="space-y-8">
-      {isAdmin && <AdminPanel />}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold">Dashboard Financeiro</h2>

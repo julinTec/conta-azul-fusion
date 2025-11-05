@@ -11,6 +11,8 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
+import { AdminGuard } from "./components/AdminGuard";
+import { AdminPanel } from "./components/AdminPanel";
 
 const queryClient = new QueryClient();
 
@@ -24,7 +26,8 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
           <Route path="/transactions" element={<Layout><Transactions /></Layout>} />
-          <Route path="/users" element={<Layout><UserManagement /></Layout>} />
+          <Route path="/users" element={<AdminGuard><Layout><UserManagement /></Layout></AdminGuard>} />
+          <Route path="/admin/integrations" element={<AdminGuard><Layout><AdminPanel /></Layout></AdminGuard>} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

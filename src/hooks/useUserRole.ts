@@ -24,6 +24,7 @@ export const useUserRole = () => {
         return;
       }
 
+      // Primary check: query user_roles table
       const { data, error } = await supabase
         .from('user_roles')
         .select('role')
@@ -32,8 +33,27 @@ export const useUserRole = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking user role:', error);
-        setIsAdmin(false);
+        console.error('Error checking user role via table:', error);
+        
+        // Fallback: use RPC function for server-side validation
+        try {
+          const { data: hasAdminRole, error: rpcError } = await supabase
+            .rpc('has_role', { 
+              _user_id: user.id, 
+              _role: 'admin' 
+            });
+
+          if (rpcError) {
+            console.error('Error checking user role via RPC:', rpcError);
+            setIsAdmin(false);
+            return;
+          }
+
+          setIsAdmin(hasAdminRole || false);
+        } catch (rpcError) {
+          console.error('Error in RPC fallback:', rpcError);
+          setIsAdmin(false);
+        }
         return;
       }
 
