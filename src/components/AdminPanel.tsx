@@ -13,6 +13,14 @@ export const AdminPanel = () => {
   const [clearing, setClearing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [syncStats, setSyncStats] = useState<{
+    lastSync: string | null;
+    minDate: string | null;
+    maxDate: string | null;
+    totalTransactions: number;
+    totalIncome: number;
+    totalExpense: number;
+  } | null>(null);
 
   useEffect(() => {
     verifyAdminAccess();
@@ -46,6 +54,7 @@ export const AdminPanel = () => {
       // Only check connection if user is admin
       if (hasAdminRole) {
         checkConnection();
+        loadSyncStats();
       }
     } catch (error) {
       console.error('Error in verifyAdminAccess:', error);
@@ -56,11 +65,52 @@ export const AdminPanel = () => {
   const checkConnection = async () => {
     const { data } = await supabase
       .from('conta_azul_config')
-      .select('id')
+      .select('access_token_secret_id, refresh_token_secret_id')
       .limit(1)
       .maybeSingle();
     
-    setHasConnection(!!data);
+    // Considera conectado apenas se ambos os secret_ids existirem
+    setHasConnection(!!(data?.access_token_secret_id && data?.refresh_token_secret_id));
+  };
+
+  const loadSyncStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('synced_transactions')
+        .select('transaction_date, amount, type, synced_at');
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setSyncStats(null);
+        return;
+      }
+
+      const dates = data.map(t => t.transaction_date).sort();
+      const lastSync = data.reduce((latest, t) => 
+        !latest || new Date(t.synced_at) > new Date(latest) ? t.synced_at : latest, 
+        null as string | null
+      );
+
+      const totalIncome = data
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      const totalExpense = data
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+
+      setSyncStats({
+        lastSync,
+        minDate: dates[0] || null,
+        maxDate: dates[dates.length - 1] || null,
+        totalTransactions: data.length,
+        totalIncome,
+        totalExpense,
+      });
+    } catch (error) {
+      console.error('Error loading sync stats:', error);
+    }
   };
 
   const handleConnect = () => {
@@ -155,6 +205,9 @@ export const AdminPanel = () => {
 
       toast.success(data.message || 'Sincronização concluída!');
       toast.info(`${data.count} transações sincronizadas`);
+      
+      // Recarregar estatísticas após sincronização
+      await loadSyncStats();
     } catch (error: any) {
       console.error('Error syncing:', error);
       toast.error(error.message || 'Erro ao sincronizar dados');
@@ -183,6 +236,9 @@ export const AdminPanel = () => {
 
       toast.success(data.message || 'Sincronização concluída!');
       toast.info(`${data.count} transações sincronizadas`);
+      
+      // Recarregar estatísticas
+      await loadSyncStats();
       
       // Recarregar a página para atualizar o gráfico
       setTimeout(() => window.location.reload(), 1500);
@@ -241,6 +297,56 @@ export const AdminPanel = () => {
                 </Button>
               </div>
             </div>
+
+            {syncStats && (
+              <Card className="bg-card/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Status da Sincronização</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Última sincronização</p>
+                      <p className="font-medium">
+                        {syncStats.lastSync 
+                          ? new Date(syncStats.lastSync).toLocaleString('pt-BR')
+                          : 'Nunca'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Total de transações</p>
+                      <p className="font-medium">{syncStats.totalTransactions}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Período dos dados</p>
+                      <p className="font-medium">
+                        {syncStats.minDate && syncStats.maxDate
+                          ? `${new Date(syncStats.minDate).toLocaleDateString('pt-BR')} - ${new Date(syncStats.maxDate).toLocaleDateString('pt-BR')}`
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Receitas</p>
+                      <p className="font-medium text-green-600 dark:text-green-400">
+                        {syncStats.totalIncome.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL'
+                        })}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground">Despesas</p>
+                      <p className="font-medium text-red-600 dark:text-red-400">
+                        {syncStats.totalExpense.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Button 
