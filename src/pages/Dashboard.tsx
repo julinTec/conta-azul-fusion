@@ -23,6 +23,34 @@ export const Dashboard = () => {
     loadDashboardData();
   }, []);
 
+  const fetchAllTransactions = async (startDateStr: string) => {
+    const pageSize = 1000;
+    let from = 0;
+    let to = pageSize - 1;
+    const all: any[] = [];
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('synced_transactions')
+        .select('type, amount, transaction_date, status')
+        .eq('status', 'RECEBIDO')
+        .gte('transaction_date', startDateStr)
+        .order('transaction_date', { ascending: true })
+        .range(from, to);
+
+      if (error) throw error;
+      if (!batch || batch.length === 0) break;
+
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+
+      from += pageSize;
+      to += pageSize;
+    }
+
+    return all;
+  };
+
   const loadDashboardData = async () => {
     try {
       setLoading(true);
@@ -36,23 +64,15 @@ export const Dashboard = () => {
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      // Buscar todas as transações desde abril/2025
-      const { data: transactions, error } = await supabase
-        .from('synced_transactions')
-        .select('*')
-        .eq('status', 'RECEBIDO')
-        .gte('transaction_date', startDateStr)
-        .order('transaction_date', { ascending: true })
-        .range(0, 5000);
-
-      if (error) throw error;
+      // Buscar todas as transações desde abril/2025 com paginação
+      const transactions = await fetchAllTransactions(startDateStr);
 
       // Debug logs
-      console.log('Dashboard data fetch:', {
+      console.log('Dashboard data fetch (paginated):', {
         startDateStr,
         totalTransactions: transactions?.length,
-        sampleDates: transactions?.slice(0, 5).map(t => t.transaction_date),
-        lastDates: transactions?.slice(-5).map(t => t.transaction_date)
+        firstDates: transactions?.slice(0, 3).map(t => t.transaction_date),
+        lastDates: transactions?.slice(-3).map(t => t.transaction_date)
       });
 
       if (!transactions || transactions.length === 0) {
