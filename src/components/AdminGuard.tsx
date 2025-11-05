@@ -21,7 +21,8 @@ export const AdminGuard = ({ children }: AdminGuardProps) => {
       
       if (userError || !user) {
         toast.error("Acesso negado");
-        navigate("/dashboard");
+        setIsAdmin(false);
+        navigate("/dashboard", { replace: true });
         return;
       }
 
@@ -35,13 +36,15 @@ export const AdminGuard = ({ children }: AdminGuardProps) => {
       if (rpcError) {
         console.error('Error checking admin role:', rpcError);
         toast.error("Acesso negado");
-        navigate("/dashboard");
+        setIsAdmin(false);
+        navigate("/dashboard", { replace: true });
         return;
       }
 
       if (!hasAdminRole) {
         toast.error("Você não tem permissão para acessar esta página");
-        navigate("/dashboard");
+        setIsAdmin(false);
+        navigate("/dashboard", { replace: true });
         return;
       }
 
@@ -49,7 +52,8 @@ export const AdminGuard = ({ children }: AdminGuardProps) => {
     } catch (error) {
       console.error('Error in AdminGuard:', error);
       toast.error("Erro ao verificar permissões");
-      navigate("/dashboard");
+      setIsAdmin(false);
+      navigate("/dashboard", { replace: true });
     }
   };
 

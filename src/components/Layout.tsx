@@ -41,6 +41,14 @@ export const Layout = ({ children }: LayoutProps) => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Redundant protection: redirect non-admins from /admin/* routes
+  useEffect(() => {
+    if (!loading && !roleLoading && !isAdmin && location.pathname.startsWith('/admin')) {
+      navigate('/dashboard', { replace: true });
+      toast.error("Você não tem permissão para acessar esta página");
+    }
+  }, [location.pathname, isAdmin, loading, roleLoading, navigate]);
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     toast.success("Logout realizado com sucesso");
