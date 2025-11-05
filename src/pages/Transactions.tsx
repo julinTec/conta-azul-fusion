@@ -41,18 +41,41 @@ export const Transactions = () => {
     filterTransactions();
   }, [searchTerm, startDate, endDate, transactions]);
 
+  const fetchAllTransactions = async () => {
+    const pageSize = 1000;
+    let from = 0;
+    let to = pageSize - 1;
+    const all: any[] = [];
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('synced_transactions')
+        .select('*')
+        .eq('status', 'RECEBIDO')
+        .order('transaction_date', { ascending: false })
+        .range(from, to);
+
+      if (error) throw error;
+      if (!batch || batch.length === 0) break;
+
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+
+      from += pageSize;
+      to += pageSize;
+    }
+
+    return all;
+  };
+
   const loadTransactions = async () => {
     try {
       setLoading(true);
       
-      // Buscar transações do banco de dados
-      const { data, error } = await supabase
-        .from('synced_transactions')
-        .select('*')
-        .eq('status', 'RECEBIDO')
-        .order('transaction_date', { ascending: false });
+      // Buscar todas as transações com paginação
+      const data = await fetchAllTransactions();
 
-      if (error) throw error;
+      console.log('Transactions page - total loaded:', data.length);
 
       if (!data || data.length === 0) {
         toast.info("Nenhum dado disponível. Aguarde a sincronização.");
