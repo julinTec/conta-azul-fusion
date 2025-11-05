@@ -26,9 +26,7 @@ const Auth = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/");
-      }
+      // Navigation is handled by AuthForm after successful login
     });
 
     return () => subscription.unsubscribe();

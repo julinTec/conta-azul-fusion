@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { DashboardStats } from "@/components/DashboardStats";
+import { AdminPanel } from "@/components/AdminPanel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Calendar, TrendingUp } from "lucide-react";
@@ -174,6 +175,8 @@ export const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      <AdminPanel />
 
       <DashboardStats
         totalIncome={stats.totalIncome}
