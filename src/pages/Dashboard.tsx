@@ -30,7 +30,6 @@ export const Dashboard = () => {
       const now = new Date();
       const startDate = new Date(2025, 3, 1); // 1º de abril de 2025
       const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = now.toISOString().split('T')[0];
       
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -43,11 +42,18 @@ export const Dashboard = () => {
         .select('*')
         .eq('status', 'RECEBIDO')
         .gte('transaction_date', startDateStr)
-        .lte('transaction_date', endDateStr)
         .order('transaction_date', { ascending: true })
         .range(0, 5000);
 
       if (error) throw error;
+
+      // Debug logs
+      console.log('Dashboard data fetch:', {
+        startDateStr,
+        totalTransactions: transactions?.length,
+        sampleDates: transactions?.slice(0, 5).map(t => t.transaction_date),
+        lastDates: transactions?.slice(-5).map(t => t.transaction_date)
+      });
 
       if (!transactions || transactions.length === 0) {
         toast.info("Nenhum dado disponível. Aguarde a sincronização.");
