@@ -11,22 +11,12 @@ const START_DATE = "2025-04-01";
 
 type ContaAzulConfig = {
   id: string;
-  access_token_secret_id: string;
-  refresh_token_secret_id: string;
+  access_token: string;
+  refresh_token: string;
   expires_at: string; // ISO
 };
 
-// Helper function to get decrypted token from Vault
-async function getDecryptedToken(supabase: any, secretId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from('vault.decrypted_secrets')
-    .select('decrypted_secret')
-    .eq('id', secretId)
-    .single();
-  
-  if (error) throw new Error(`Failed to decrypt token: ${error.message}`);
-  return data.decrypted_secret;
-}
+// Função removida - não precisamos mais do Vault
 
 function toISODate(d?: string | null) {
   if (!d) return null;
@@ -125,10 +115,10 @@ serve(async (req) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole);
 
-    // 1) Load Conta Azul config (now with secret IDs)
+    // 1) Load Conta Azul config
     const { data: config, error: configError } = await supabase
       .from("conta_azul_config")
-      .select("id, access_token_secret_id, refresh_token_secret_id, expires_at")
+      .select("id, access_token, refresh_token, expires_at")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<ContaAzulConfig>();
@@ -141,18 +131,18 @@ serve(async (req) => {
       });
     }
 
-    if (!config.access_token_secret_id || !config.refresh_token_secret_id) {
-      return new Response(JSON.stringify({ error: "Tokens não encontrados no Vault" }), {
+    if (!config.access_token || !config.refresh_token) {
+      return new Response(JSON.stringify({ error: "Tokens não encontrados. Por favor, reconecte ao Conta Azul." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    console.log('Loading tokens from Vault...');
+    console.log('Loading tokens from database...');
 
-    // Load tokens from Vault
-    let accessToken = await getDecryptedToken(supabase, config.access_token_secret_id);
-    let refreshToken = await getDecryptedToken(supabase, config.refresh_token_secret_id);
+    // Tokens agora vêm diretamente da tabela
+    let accessToken = config.access_token;
+    let refreshToken = config.refresh_token;
 
     const now = Date.now();
     const expiresAt = new Date(config.expires_at).getTime();
@@ -170,27 +160,20 @@ serve(async (req) => {
       accessToken = tokenData.access_token;
       refreshToken = tokenData.refresh_token;
 
-      console.log('Updating tokens in Vault...');
+      console.log('Updating tokens in database...');
 
-      // Update secrets in Vault
-      await supabase.from('vault.secrets')
-        .update({ secret: tokenData.access_token })
-        .eq('id', config.access_token_secret_id);
-
-      await supabase.from('vault.secrets')
-        .update({ secret: tokenData.refresh_token })
-        .eq('id', config.refresh_token_secret_id);
-
-      // Update expires_at in config
+      // Atualizar tokens diretamente na config
       const update = await supabase
         .from("conta_azul_config")
         .update({
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
           expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq("id", config.id);
       if (update.error) throw update.error;
-      console.log("Token refreshed and saved to Vault.");
+      console.log("Token refreshed and saved to database.");
     }
 
     // 3) Fetch data from Conta Azul

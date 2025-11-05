@@ -65,12 +65,12 @@ export const AdminPanel = () => {
   const checkConnection = async () => {
     const { data } = await supabase
       .from('conta_azul_config')
-      .select('access_token_secret_id, refresh_token_secret_id')
+      .select('access_token, refresh_token')
       .limit(1)
       .maybeSingle();
     
-    // Considera conectado apenas se ambos os secret_ids existirem
-    setHasConnection(!!(data?.access_token_secret_id && data?.refresh_token_secret_id));
+    // Considera conectado apenas se ambos os tokens existirem
+    setHasConnection(!!(data?.access_token && data?.refresh_token));
   };
 
   const loadSyncStats = async () => {

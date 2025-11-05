@@ -6,17 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function to get decrypted token from Vault
-async function getDecryptedToken(supabase: any, secretId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from('vault.decrypted_secrets')
-    .select('decrypted_secret')
-    .eq('id', secretId)
-    .single();
-  
-  if (error) throw new Error(`Failed to decrypt token: ${error.message}`);
-  return data.decrypted_secret;
-}
+// Função removida - não precisamos mais do Vault
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -49,10 +39,10 @@ serve(async (req) => {
       throw new Error('Acesso negado. Apenas administradores podem sincronizar.');
     }
 
-    // Buscar configuração do Conta Azul (agora com secret IDs)
+    // Buscar configuração do Conta Azul
     const { data: config, error: configError } = await supabaseClient
       .from('conta_azul_config')
-      .select('id, access_token_secret_id, refresh_token_secret_id, expires_at, updated_by')
+      .select('id, access_token, refresh_token, expires_at, updated_by')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -61,15 +51,15 @@ serve(async (req) => {
       throw new Error('Configuração do Conta Azul não encontrada');
     }
 
-    if (!config.access_token_secret_id || !config.refresh_token_secret_id) {
-      throw new Error('Tokens não encontrados no Vault. Por favor, reconecte ao Conta Azul.');
+    if (!config.access_token || !config.refresh_token) {
+      throw new Error('Tokens não encontrados. Por favor, reconecte ao Conta Azul.');
     }
 
-    console.log('Loading tokens from Vault...');
+    console.log('Loading tokens from database...');
 
-    // Buscar tokens descriptografados do Vault
-    let accessToken = await getDecryptedToken(supabaseClient, config.access_token_secret_id);
-    let refreshToken = await getDecryptedToken(supabaseClient, config.refresh_token_secret_id);
+    // Tokens agora vêm diretamente da tabela
+    let accessToken = config.access_token;
+    let refreshToken = config.refresh_token;
 
     // Verificar se o token precisa ser atualizado
     const now = new Date();
@@ -104,27 +94,20 @@ serve(async (req) => {
       accessToken = tokenData.access_token;
       refreshToken = tokenData.refresh_token;
 
-      console.log('Updating tokens in Vault...');
+      console.log('Updating tokens in database...');
 
-      // Atualizar secrets no Vault
-      await supabaseClient.from('vault.secrets')
-        .update({ secret: tokenData.access_token })
-        .eq('id', config.access_token_secret_id);
-
-      await supabaseClient.from('vault.secrets')
-        .update({ secret: tokenData.refresh_token })
-        .eq('id', config.refresh_token_secret_id);
-
-      // Atualizar apenas o expires_at na config
+      // Atualizar tokens diretamente na config
       await supabaseClient
         .from('conta_azul_config')
         .update({
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
           expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_by: user.id,
         })
         .eq('id', config.id);
 
-      console.log('Tokens refreshed and saved to Vault');
+      console.log('Tokens refreshed and saved to database');
     }
 
     // Buscar dados desde abril de 2025

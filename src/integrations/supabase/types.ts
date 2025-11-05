@@ -52,34 +52,28 @@ export type Database = {
       conta_azul_config: {
         Row: {
           access_token: string | null
-          access_token_secret_id: string | null
           created_at: string
           expires_at: string
           id: string
           refresh_token: string | null
-          refresh_token_secret_id: string | null
           updated_at: string
           updated_by: string
         }
         Insert: {
           access_token?: string | null
-          access_token_secret_id?: string | null
           created_at?: string
           expires_at: string
           id?: string
           refresh_token?: string | null
-          refresh_token_secret_id?: string | null
           updated_at?: string
           updated_by: string
         }
         Update: {
           access_token?: string | null
-          access_token_secret_id?: string | null
           created_at?: string
           expires_at?: string
           id?: string
           refresh_token?: string | null
-          refresh_token_secret_id?: string | null
           updated_at?: string
           updated_by?: string
         }

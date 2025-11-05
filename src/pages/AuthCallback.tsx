@@ -49,10 +49,10 @@ export default function AuthCallback() {
           return;
         }
 
-        setStatus("Salvando tokens no Vault...");
+        setStatus("Salvando tokens...");
 
-        // Salvar tokens no Vault via edge function
-        const { data: vaultIds, error: vaultError } = await supabase.functions.invoke(
+        // Salvar tokens diretamente na tabela via edge function
+        const { error: saveError } = await supabase.functions.invoke(
           'save-conta-azul-tokens',
           {
             body: {
@@ -63,24 +63,7 @@ export default function AuthCallback() {
           }
         );
 
-        if (vaultError) throw vaultError;
-
-        setStatus("Salvando configuração...");
-
-        // Salvar IDs dos secrets no config (tokens nunca ficam em texto plano)
-        const { error: configError } = await supabase
-          .from('conta_azul_config')
-          .upsert({
-            access_token_secret_id: vaultIds.access_token_id,
-            refresh_token_secret_id: vaultIds.refresh_token_id,
-            expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-            updated_by: user.id,
-            // Limpar tokens antigos em texto plano (se existirem)
-            access_token: null,
-            refresh_token: null,
-          });
-
-        if (configError) throw configError;
+        if (saveError) throw saveError;
 
         toast.success("Conectado ao Conta Azul com sucesso!");
         toast.info("Clique em 'Sincronizar Dados' para atualizar as transações");
