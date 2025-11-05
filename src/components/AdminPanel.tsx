@@ -138,7 +138,8 @@ export const AdminPanel = () => {
       if (error) throw error;
 
       setHasConnection(false);
-      toast.success('Conexão com Conta Azul removida. Você pode reconectar agora.');
+      toast.success('Conexão removida. Os tokens foram permanentemente apagados do Vault.');
+      toast.info('Reconecte para gerar novos tokens seguros.');
     } catch (error: any) {
       console.error('Error disconnecting:', error);
       toast.error('Erro ao desconectar: ' + error.message);

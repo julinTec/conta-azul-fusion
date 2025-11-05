@@ -51,29 +51,35 @@ export type Database = {
       }
       conta_azul_config: {
         Row: {
-          access_token: string
+          access_token: string | null
+          access_token_secret_id: string | null
           created_at: string
           expires_at: string
           id: string
-          refresh_token: string
+          refresh_token: string | null
+          refresh_token_secret_id: string | null
           updated_at: string
           updated_by: string
         }
         Insert: {
-          access_token: string
+          access_token?: string | null
+          access_token_secret_id?: string | null
           created_at?: string
           expires_at: string
           id?: string
-          refresh_token: string
+          refresh_token?: string | null
+          refresh_token_secret_id?: string | null
           updated_at?: string
           updated_by: string
         }
         Update: {
-          access_token?: string
+          access_token?: string | null
+          access_token_secret_id?: string | null
           created_at?: string
           expires_at?: string
           id?: string
-          refresh_token?: string
+          refresh_token?: string | null
+          refresh_token_secret_id?: string | null
           updated_at?: string
           updated_by?: string
         }
@@ -219,7 +225,36 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      conta_azul_config_safe: {
+        Row: {
+          access_token_secret_id: string | null
+          created_at: string | null
+          expires_at: string | null
+          id: string | null
+          refresh_token_secret_id: string | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          access_token_secret_id?: never
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          refresh_token_secret_id?: never
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          access_token_secret_id?: never
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string | null
+          refresh_token_secret_id?: never
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_role: {

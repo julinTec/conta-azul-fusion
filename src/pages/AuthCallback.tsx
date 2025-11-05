@@ -49,16 +49,35 @@ export default function AuthCallback() {
           return;
         }
 
+        setStatus("Salvando tokens no Vault...");
+
+        // Salvar tokens no Vault via edge function
+        const { data: vaultIds, error: vaultError } = await supabase.functions.invoke(
+          'save-conta-azul-tokens',
+          {
+            body: {
+              access_token: tokenData.access_token,
+              refresh_token: tokenData.refresh_token,
+              expires_in: tokenData.expires_in,
+            }
+          }
+        );
+
+        if (vaultError) throw vaultError;
+
         setStatus("Salvando configuração...");
 
-        // Salvar configuração no banco (apenas para admins)
+        // Salvar IDs dos secrets no config (tokens nunca ficam em texto plano)
         const { error: configError } = await supabase
           .from('conta_azul_config')
           .upsert({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
+            access_token_secret_id: vaultIds.access_token_id,
+            refresh_token_secret_id: vaultIds.refresh_token_id,
             expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
             updated_by: user.id,
+            // Limpar tokens antigos em texto plano (se existirem)
+            access_token: null,
+            refresh_token: null,
           });
 
         if (configError) throw configError;

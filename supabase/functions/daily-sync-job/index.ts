@@ -11,10 +11,22 @@ const START_DATE = "2025-04-01";
 
 type ContaAzulConfig = {
   id: string;
-  access_token: string;
-  refresh_token: string;
+  access_token_secret_id: string;
+  refresh_token_secret_id: string;
   expires_at: string; // ISO
 };
+
+// Helper function to get decrypted token from Vault
+async function getDecryptedToken(supabase: any, secretId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('vault.decrypted_secrets')
+    .select('decrypted_secret')
+    .eq('id', secretId)
+    .single();
+  
+  if (error) throw new Error(`Failed to decrypt token: ${error.message}`);
+  return data.decrypted_secret;
+}
 
 function toISODate(d?: string | null) {
   if (!d) return null;
@@ -78,7 +90,6 @@ async function chunkedUpsert(supabase: any, rows: any[], chunkSize = 500) {
     const chunk = rows.slice(i, i + chunkSize);
     const { error } = await supabase
       .from("synced_transactions")
-      // onConflict relies on a unique index; existing sync function already uses upsert semantics
       .upsert(chunk, { onConflict: "external_id" });
     if (error) throw error;
   }
@@ -114,10 +125,10 @@ serve(async (req) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole);
 
-    // 1) Load Conta Azul config
+    // 1) Load Conta Azul config (now with secret IDs)
     const { data: config, error: configError } = await supabase
       .from("conta_azul_config")
-      .select("id, access_token, refresh_token, expires_at")
+      .select("id, access_token_secret_id, refresh_token_secret_id, expires_at")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<ContaAzulConfig>();
@@ -130,33 +141,56 @@ serve(async (req) => {
       });
     }
 
-    let accessToken = config.access_token;
+    if (!config.access_token_secret_id || !config.refresh_token_secret_id) {
+      return new Response(JSON.stringify({ error: "Tokens não encontrados no Vault" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log('Loading tokens from Vault...');
+
+    // Load tokens from Vault
+    let accessToken = await getDecryptedToken(supabase, config.access_token_secret_id);
+    let refreshToken = await getDecryptedToken(supabase, config.refresh_token_secret_id);
+
     const now = Date.now();
     const expiresAt = new Date(config.expires_at).getTime();
     const buffer = 5 * 60 * 1000;
 
-    // 2) Refresh token if expired/near expiry using existing auth function
+    // 2) Refresh token if expired/near expiry
     if (!expiresAt || expiresAt <= now + buffer) {
       console.log("Refreshing Conta Azul access token...");
       const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
-        body: { refreshToken: config.refresh_token },
+        body: { refreshToken: refreshToken },
       });
       if (refreshRes.error) throw refreshRes.error;
 
       const tokenData: any = refreshRes.data;
       accessToken = tokenData.access_token;
+      refreshToken = tokenData.refresh_token;
 
+      console.log('Updating tokens in Vault...');
+
+      // Update secrets in Vault
+      await supabase.from('vault.secrets')
+        .update({ secret: tokenData.access_token })
+        .eq('id', config.access_token_secret_id);
+
+      await supabase.from('vault.secrets')
+        .update({ secret: tokenData.refresh_token })
+        .eq('id', config.refresh_token_secret_id);
+
+      // Update expires_at in config
       const update = await supabase
         .from("conta_azul_config")
         .update({
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
           expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq("id", config.id);
       if (update.error) throw update.error;
-      console.log("Token refreshed and saved.");
+      console.log("Token refreshed and saved to Vault.");
     }
 
     // 3) Fetch data from Conta Azul

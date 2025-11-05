@@ -6,6 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to get decrypted token from Vault
+async function getDecryptedToken(supabase: any, secretId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('vault.decrypted_secrets')
+    .select('decrypted_secret')
+    .eq('id', secretId)
+    .single();
+  
+  if (error) throw new Error(`Failed to decrypt token: ${error.message}`);
+  return data.decrypted_secret;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -37,10 +49,10 @@ serve(async (req) => {
       throw new Error('Acesso negado. Apenas administradores podem sincronizar.');
     }
 
-    // Buscar configuração do Conta Azul
+    // Buscar configuração do Conta Azul (agora com secret IDs)
     const { data: config, error: configError } = await supabaseClient
       .from('conta_azul_config')
-      .select('*')
+      .select('id, access_token_secret_id, refresh_token_secret_id, expires_at, updated_by')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -49,12 +61,23 @@ serve(async (req) => {
       throw new Error('Configuração do Conta Azul não encontrada');
     }
 
+    if (!config.access_token_secret_id || !config.refresh_token_secret_id) {
+      throw new Error('Tokens não encontrados no Vault. Por favor, reconecte ao Conta Azul.');
+    }
+
+    console.log('Loading tokens from Vault...');
+
+    // Buscar tokens descriptografados do Vault
+    let accessToken = await getDecryptedToken(supabaseClient, config.access_token_secret_id);
+    let refreshToken = await getDecryptedToken(supabaseClient, config.refresh_token_secret_id);
+
     // Verificar se o token precisa ser atualizado
-    let accessToken = config.access_token;
     const now = new Date();
     const expiresAt = new Date(config.expires_at);
 
     if (expiresAt <= now) {
+      console.log('Token expired, refreshing...');
+      
       // Refresh token
       const clientId = Deno.env.get('CONTA_AZUL_CLIENT_ID');
       const clientSecret = Deno.env.get('CONTA_AZUL_CLIENT_SECRET');
@@ -69,7 +92,7 @@ serve(async (req) => {
           client_id: clientId!,
           client_secret: clientSecret!,
           grant_type: 'refresh_token',
-          refresh_token: config.refresh_token,
+          refresh_token: refreshToken,
         }),
       });
 
@@ -79,17 +102,29 @@ serve(async (req) => {
 
       const tokenData = await tokenResponse.json();
       accessToken = tokenData.access_token;
+      refreshToken = tokenData.refresh_token;
 
-      // Atualizar configuração
+      console.log('Updating tokens in Vault...');
+
+      // Atualizar secrets no Vault
+      await supabaseClient.from('vault.secrets')
+        .update({ secret: tokenData.access_token })
+        .eq('id', config.access_token_secret_id);
+
+      await supabaseClient.from('vault.secrets')
+        .update({ secret: tokenData.refresh_token })
+        .eq('id', config.refresh_token_secret_id);
+
+      // Atualizar apenas o expires_at na config
       await supabaseClient
         .from('conta_azul_config')
         .update({
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token,
           expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
           updated_by: user.id,
         })
         .eq('id', config.id);
+
+      console.log('Tokens refreshed and saved to Vault');
     }
 
     // Buscar dados desde abril de 2025
