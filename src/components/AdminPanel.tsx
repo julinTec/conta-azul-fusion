@@ -10,6 +10,7 @@ const REDIRECT_URI = "https://e67bcf1c-e649-449f-b1c3-6b34a01b3f70.lovableprojec
 
 export const AdminPanel = () => {
   const [syncing, setSyncing] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
 
   useEffect(() => {
@@ -125,6 +126,38 @@ export const AdminPanel = () => {
     }
   };
 
+  const handleClearAndResync = async () => {
+    setClearing(true);
+    try {
+      // Primeiro, limpar os dados
+      toast.info('Limpando dados antigos...');
+      const { error: clearError } = await supabase.functions.invoke('clear-synced-data');
+
+      if (clearError) throw clearError;
+
+      toast.success('Dados limpos com sucesso!');
+
+      // Depois, sincronizar novamente
+      toast.info('Iniciando sincronização...');
+      setSyncing(true);
+      const { data, error: syncError } = await supabase.functions.invoke('sync-conta-azul');
+
+      if (syncError) throw syncError;
+
+      toast.success(data.message || 'Sincronização concluída!');
+      toast.info(`${data.count} transações sincronizadas`);
+      
+      // Recarregar a página para atualizar o gráfico
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error: any) {
+      console.error('Error clearing and resyncing:', error);
+      toast.error(error.message || 'Erro ao limpar e sincronizar dados');
+    } finally {
+      setClearing(false);
+      setSyncing(false);
+    }
+  };
+
   return (
     <Card className="mb-8 border-primary/20 bg-primary/5">
       <CardHeader>
@@ -167,26 +200,48 @@ export const AdminPanel = () => {
               </div>
             </div>
 
-            <Button 
-              onClick={handleSync} 
-              disabled={syncing}
-              size="lg" 
-              className="w-full"
-            >
-              {syncing ? (
-                <>
-                  <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-5 w-5" />
-                  Sincronizar Dados
-                </>
-              )}
-            </Button>
+            <div className="grid grid-cols-2 gap-4">
+              <Button 
+                onClick={handleSync} 
+                disabled={syncing || clearing}
+                size="lg" 
+                className="w-full"
+              >
+                {syncing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                    Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-5 w-5" />
+                    Sincronizar
+                  </>
+                )}
+              </Button>
+
+              <Button 
+                onClick={handleClearAndResync} 
+                disabled={syncing || clearing}
+                variant="destructive"
+                size="lg" 
+                className="w-full"
+              >
+                {clearing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                    Limpando...
+                  </>
+                ) : (
+                  <>
+                    <Database className="mr-2 h-5 w-5" />
+                    Limpar e Re-sincronizar
+                  </>
+                )}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground text-center">
-              Última sincronização: A sincronização busca os últimos 6 meses de dados
+              Use "Limpar e Re-sincronizar" se os valores estiverem incorretos
             </p>
           </div>
         )}

@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.sync-conta-azul]
 verify_jwt = true
 
+[functions.clear-synced-data]
+verify_jwt = true
+
 [functions.admin-create-user]
 verify_jwt = true
 
