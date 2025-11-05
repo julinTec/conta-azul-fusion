@@ -7,6 +7,13 @@ export const useUserRole = () => {
 
   useEffect(() => {
     checkUserRole();
+
+    // Listen for auth state changes to re-check role
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      checkUserRole();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const checkUserRole = async () => {

@@ -12,10 +12,46 @@ export const AdminPanel = () => {
   const [syncing, setSyncing] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    checkConnection();
+    verifyAdminAccess();
   }, []);
+
+  const verifyAdminAccess = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error verifying admin access:', error);
+        setIsAdmin(false);
+        return;
+      }
+
+      const hasAdminRole = !!data;
+      setIsAdmin(hasAdminRole);
+
+      // Only check connection if user is admin
+      if (hasAdminRole) {
+        checkConnection();
+      }
+    } catch (error) {
+      console.error('Error in verifyAdminAccess:', error);
+      setIsAdmin(false);
+    }
+  };
 
   const checkConnection = async () => {
     const { data } = await supabase
@@ -157,6 +193,11 @@ export const AdminPanel = () => {
       setSyncing(false);
     }
   };
+
+  // Don't render anything if not admin or still checking
+  if (isAdmin === null || isAdmin === false) {
+    return null;
+  }
 
   return (
     <Card className="mb-8 border-primary/20 bg-primary/5">
