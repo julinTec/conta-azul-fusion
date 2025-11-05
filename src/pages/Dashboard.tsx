@@ -91,9 +91,12 @@ export const Dashboard = () => {
         const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
         
         const monthTransactions = transactions.filter(t => {
-          const [year, month, day] = t.transaction_date.split('-');
-          const date = new Date(Number(year), Number(month) - 1, Number(day));
-          return date >= monthStart && date <= monthEnd;
+          const [year, month] = t.transaction_date.split('-');
+          const transactionYear = Number(year);
+          const transactionMonth = Number(month);
+          
+          return transactionYear === monthDate.getFullYear() && 
+                 transactionMonth === (monthDate.getMonth() + 1);
         });
 
         const income = monthTransactions

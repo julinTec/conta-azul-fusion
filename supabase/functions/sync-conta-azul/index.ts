@@ -158,7 +158,7 @@ serve(async (req) => {
       ...filteredReceberItems.map((item: any) => ({
         external_id: `receber_${item.id}`,
         type: 'income',
-        amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
+        amount: item.pago ?? 0,
         description: item.descricao || 'Conta a Receber',
         transaction_date: item.data_vencimento,
         status: item.status_traduzido,
@@ -170,7 +170,7 @@ serve(async (req) => {
       ...filteredPagarItems.map((item: any) => ({
         external_id: `pagar_${item.id}`,
         type: 'expense',
-        amount: item.total ?? item.pago ?? item.nao_pago ?? 0,
+        amount: item.pago ?? 0,
         description: item.descricao || 'Conta a Pagar',
         transaction_date: item.data_vencimento,
         status: item.status_traduzido,
@@ -180,6 +180,26 @@ serve(async (req) => {
         raw_data: item,
       })),
     ];
+
+    console.log('=== SYNC DEBUG ===');
+    console.log('Total transactions to sync:', transactions.length);
+    console.log('Sample transactions (first 3):', transactions.slice(0, 3).map(t => ({
+      id: t.external_id,
+      type: t.type,
+      amount: t.amount,
+      date: t.transaction_date,
+      status: t.status
+    })));
+    
+    // Log totals by month
+    const monthlyTotals = transactions.reduce((acc: any, t: any) => {
+      const month = t.transaction_date.substring(0, 7);
+      if (!acc[month]) acc[month] = { income: 0, expense: 0 };
+      if (t.type === 'income') acc[month].income += Number(t.amount);
+      if (t.type === 'expense') acc[month].expense += Number(t.amount);
+      return acc;
+    }, {});
+    console.log('Monthly totals:', monthlyTotals);
 
     // Inserir/atualizar transações no banco (upsert)
     const { error: upsertError } = await supabaseClient
