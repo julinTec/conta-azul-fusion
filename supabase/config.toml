@@ -21,3 +21,5 @@ verify_jwt = true
 [functions.admin-toggle-role]
 verify_jwt = true
 
+[functions.daily-sync-job]
+verify_jwt = false
