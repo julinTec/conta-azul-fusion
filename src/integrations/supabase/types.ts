@@ -225,36 +225,7 @@ export type Database = {
       }
     }
     Views: {
-      conta_azul_config_safe: {
-        Row: {
-          access_token_secret_id: string | null
-          created_at: string | null
-          expires_at: string | null
-          id: string | null
-          refresh_token_secret_id: string | null
-          updated_at: string | null
-          updated_by: string | null
-        }
-        Insert: {
-          access_token_secret_id?: never
-          created_at?: string | null
-          expires_at?: string | null
-          id?: string | null
-          refresh_token_secret_id?: never
-          updated_at?: string | null
-          updated_by?: string | null
-        }
-        Update: {
-          access_token_secret_id?: never
-          created_at?: string | null
-          expires_at?: string | null
-          id?: string | null
-          refresh_token_secret_id?: never
-          updated_at?: string | null
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       has_role: {
