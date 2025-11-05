@@ -28,17 +28,24 @@ export const Dashboard = () => {
       setLoading(true);
       
       const now = new Date();
+      const startDate = new Date(2025, 3, 1); // 1º de abril de 2025
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = now.toISOString().split('T')[0];
+      
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      // Buscar todas as transações para construir o gráfico
+      // Buscar todas as transações desde abril/2025
       const { data: transactions, error } = await supabase
         .from('synced_transactions')
         .select('*')
         .eq('status', 'RECEBIDO')
-        .order('transaction_date', { ascending: false });
+        .gte('transaction_date', startDateStr)
+        .lte('transaction_date', endDateStr)
+        .order('transaction_date', { ascending: true })
+        .range(0, 5000);
 
       if (error) throw error;
 
@@ -61,9 +68,9 @@ export const Dashboard = () => {
 
       // Calcular mês anterior para comparação
       const previousTransactions = transactions.filter(t => {
-        const [year, month, day] = t.transaction_date.split('-');
-        const date = new Date(Number(year), Number(month) - 1, Number(day));
-        return date >= previousMonthStart && date <= previousMonthEnd;
+        const [year, month] = t.transaction_date.split('-').map(Number);
+        return year === previousMonthStart.getFullYear() && 
+               month === (previousMonthStart.getMonth() + 1);
       });
 
       const previousIncome = previousTransactions
@@ -83,20 +90,19 @@ export const Dashboard = () => {
         previousBalance,
       });
 
-      // Construir dados do gráfico
+      // Construir dados do gráfico desde abril/2025
       const months = [];
-      for (let i = 11; i >= 0; i--) {
-        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
-        
+      let cursor = new Date(2025, 3, 1); // Abril de 2025
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      while (cursor <= lastMonthStart) {
         const monthTransactions = transactions.filter(t => {
           const [year, month] = t.transaction_date.split('-');
           const transactionYear = Number(year);
           const transactionMonth = Number(month);
           
-          return transactionYear === monthDate.getFullYear() && 
-                 transactionMonth === (monthDate.getMonth() + 1);
+          return transactionYear === cursor.getFullYear() && 
+                 transactionMonth === (cursor.getMonth() + 1);
         });
 
         const income = monthTransactions
@@ -108,10 +114,13 @@ export const Dashboard = () => {
           .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
         months.push({
-          month: monthDate.toLocaleDateString('pt-BR', { month: 'short' }),
+          month: cursor.toLocaleDateString('pt-BR', { month: 'short' }),
           receitas: income,
           despesas: expense,
         });
+
+        // Avançar para o próximo mês
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
       }
 
       setChartData(months);

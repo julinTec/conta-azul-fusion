@@ -92,12 +92,16 @@ serve(async (req) => {
         .eq('id', config.id);
     }
 
-    // Buscar dados dos últimos 6 meses
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    // Buscar dados desde abril de 2025
+    const startDate = new Date(2025, 3, 1); // 1º de abril de 2025
     const today = new Date();
 
     const formatDate = (date: Date) => date.toISOString().split('T')[0];
+
+    console.log('Fetching data from Conta Azul:', {
+      from: formatDate(startDate),
+      to: formatDate(today)
+    });
 
     const baseUrl = 'https://api-v2.contaazul.com';
 
@@ -135,7 +139,7 @@ serve(async (req) => {
     };
 
     const params = {
-      'data_vencimento_de': formatDate(sixMonthsAgo),
+      'data_vencimento_de': formatDate(startDate),
       'data_vencimento_ate': formatDate(today),
     };
 
