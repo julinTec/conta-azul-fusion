@@ -61,7 +61,8 @@ export const Dashboard = () => {
 
       // Calcular mês anterior para comparação
       const previousTransactions = transactions.filter(t => {
-        const date = new Date(t.transaction_date);
+        const [year, month, day] = t.transaction_date.split('-');
+        const date = new Date(Number(year), Number(month) - 1, Number(day));
         return date >= previousMonthStart && date <= previousMonthEnd;
       });
 
@@ -90,7 +91,8 @@ export const Dashboard = () => {
         const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
         
         const monthTransactions = transactions.filter(t => {
-          const date = new Date(t.transaction_date);
+          const [year, month, day] = t.transaction_date.split('-');
+          const date = new Date(Number(year), Number(month) - 1, Number(day));
           return date >= monthStart && date <= monthEnd;
         });
 

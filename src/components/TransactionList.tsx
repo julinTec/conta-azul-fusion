@@ -69,9 +69,11 @@ export const TransactionList = ({ transactions }: TransactionListProps) => {
                     <div className="flex items-center gap-2 mt-1">
                       <div className="flex items-center text-xs text-muted-foreground">
                         <Calendar className="h-3 w-3 mr-1" />
-                        {format(new Date(transaction.date), "dd 'de' MMMM", {
-                          locale: ptBR,
-                        })}
+                        {(() => {
+                          const [year, month, day] = transaction.date.split('-');
+                          const localDate = new Date(Number(year), Number(month) - 1, Number(day));
+                          return format(localDate, "dd 'de' MMMM", { locale: ptBR });
+                        })()}
                       </div>
                       {transaction.categories && (
                         <div className="flex items-center text-xs">

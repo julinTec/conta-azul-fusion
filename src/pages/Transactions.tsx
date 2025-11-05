@@ -122,7 +122,8 @@ export const Transactions = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    const [year, month, day] = dateString.split('-');
+    return new Date(Number(year), Number(month) - 1, Number(day)).toLocaleDateString('pt-BR');
   };
 
   const exportToExcel = () => {
