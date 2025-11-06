@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.save-conta-azul-tokens]
 verify_jwt = true
+
+[functions.send-sync-notification]
+verify_jwt = false

@@ -212,6 +212,23 @@ serve(async (req) => {
       await chunkedUpsert(supabase, allRows, 500);
     }
 
+    // 5) Send email notification
+    try {
+      await supabase.functions.invoke("send-sync-notification", {
+        body: {
+          status: "success",
+          receivablesCount: incomeRows.length,
+          payablesCount: expenseRows.length,
+          totalTransactions: allRows.length,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      console.log("Email notification sent successfully");
+    } catch (emailError: any) {
+      console.error("Failed to send email notification:", emailError.message);
+      // Don't fail the sync if email fails
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -224,6 +241,28 @@ serve(async (req) => {
     );
   } catch (e: any) {
     console.error("daily-sync-job error:", e);
+    
+    // Send error notification email
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, serviceRole);
+      
+      await supabase.functions.invoke("send-sync-notification", {
+        body: {
+          status: "error",
+          receivablesCount: 0,
+          payablesCount: 0,
+          totalTransactions: 0,
+          timestamp: new Date().toISOString(),
+          errorMessage: e?.message ?? String(e),
+        },
+      });
+      console.log("Error notification email sent");
+    } catch (emailError: any) {
+      console.error("Failed to send error notification email:", emailError.message);
+    }
+
     return new Response(JSON.stringify({ success: false, error: e?.message ?? String(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
