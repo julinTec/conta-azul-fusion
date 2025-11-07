@@ -26,7 +26,7 @@ export const AuthForm = () => {
 
       if (error) throw error;
       toast.success("Login realizado com sucesso!");
-      navigate("/dashboard");
+      navigate("/schools");
     } catch (error: any) {
       toast.error(error.message || "Erro ao fazer login. Verifique suas credenciais.");
       setLoading(false);
