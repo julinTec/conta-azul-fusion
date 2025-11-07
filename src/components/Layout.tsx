@@ -81,7 +81,7 @@ export const Layout = ({ children }: LayoutProps) => {
             </Button>
           </div>
           <div className="flex items-center gap-4">
-            <nav className="flex items-center gap-2">
+            <nav className="flex items-center gap-4">
               <Link to="/dashboard">
                 <Button 
                   variant={location.pathname === "/dashboard" ? "default" : "ghost"} 
