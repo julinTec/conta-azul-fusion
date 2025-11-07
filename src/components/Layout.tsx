@@ -1,11 +1,12 @@
 import { useEffect, useState, ReactNode } from "react";
-import { useNavigate, Link, useLocation } from "react-router-dom";
+import { useNavigate, Link, useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { LogOut, LayoutDashboard, List, Users, School } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useSchool } from "@/contexts/SchoolContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,6 +15,8 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { schoolSlug } = useParams();
+  const { school, loading: schoolLoading } = useSchool();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { isAdmin, loading: roleLoading } = useUserRole();
@@ -43,11 +46,19 @@ export const Layout = ({ children }: LayoutProps) => {
 
   // Redundant protection: redirect non-admins from /admin/* routes
   useEffect(() => {
-    if (!loading && !roleLoading && !isAdmin && location.pathname.startsWith('/admin')) {
-      navigate('/dashboard', { replace: true });
+    if (!loading && !roleLoading && !isAdmin && location.pathname.includes('/admin/integrations')) {
+      navigate('/schools', { replace: true });
       toast.error("Você não tem permissão para acessar esta página");
     }
   }, [location.pathname, isAdmin, loading, roleLoading, navigate]);
+
+  // Redirect to schools if school not found
+  useEffect(() => {
+    if (!schoolLoading && schoolSlug && !school) {
+      navigate('/schools', { replace: true });
+      toast.error("Escola não encontrada");
+    }
+  }, [school, schoolLoading, schoolSlug, navigate]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -55,7 +66,7 @@ export const Layout = ({ children }: LayoutProps) => {
     navigate("/auth");
   };
 
-  if (loading || roleLoading) {
+  if (loading || roleLoading || schoolLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -68,9 +79,14 @@ export const Layout = ({ children }: LayoutProps) => {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              FinanceFlow
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                FinanceFlow
+              </h1>
+              {school && (
+                <span className="text-sm text-muted-foreground">{school.name}</span>
+              )}
+            </div>
             <Button 
               onClick={() => navigate("/schools")} 
               variant="outline" 
@@ -82,18 +98,18 @@ export const Layout = ({ children }: LayoutProps) => {
           </div>
           <div className="flex items-center gap-4">
             <nav className="flex items-center gap-4">
-              <Link to="/dashboard">
+              <Link to={`/school/${schoolSlug}/dashboard`}>
                 <Button 
-                  variant={location.pathname === "/dashboard" ? "default" : "ghost"} 
+                  variant={location.pathname.includes("/dashboard") ? "default" : "ghost"} 
                   size="sm"
                 >
                   <LayoutDashboard className="h-4 w-4 mr-2" />
                   Dashboard
                 </Button>
               </Link>
-              <Link to="/transactions">
+              <Link to={`/school/${schoolSlug}/transactions`}>
                 <Button 
-                  variant={location.pathname === "/transactions" ? "default" : "ghost"} 
+                  variant={location.pathname.includes("/transactions") ? "default" : "ghost"} 
                   size="sm"
                 >
                   <List className="h-4 w-4 mr-2" />
@@ -101,9 +117,9 @@ export const Layout = ({ children }: LayoutProps) => {
                 </Button>
               </Link>
               {isAdmin && (
-                <Link to="/users">
+                <Link to={`/school/${schoolSlug}/users`}>
                   <Button 
-                    variant={location.pathname === "/users" ? "default" : "ghost"} 
+                    variant={location.pathname.includes("/users") ? "default" : "ghost"} 
                     size="sm"
                   >
                     <Users className="h-4 w-4 mr-2" />

@@ -8,6 +8,8 @@ import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TransactionStats } from "@/components/TransactionStats";
+import { useSchool } from "@/contexts/SchoolContext";
+import { useNavigate } from "react-router-dom";
 
 interface Transaction {
   id: string;
@@ -23,6 +25,8 @@ interface Transaction {
 }
 
 export const Transactions = () => {
+  const navigate = useNavigate();
+  const { school, loading: schoolLoading } = useSchool();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,14 +35,24 @@ export const Transactions = () => {
   const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
-    loadTransactions();
-  }, []);
+    if (!schoolLoading && !school) {
+      navigate('/schools');
+    }
+  }, [school, schoolLoading, navigate]);
+
+  useEffect(() => {
+    if (school?.id) {
+      loadTransactions();
+    }
+  }, [school?.id]);
 
   useEffect(() => {
     filterTransactions();
   }, [searchTerm, startDate, endDate, transactions]);
 
   const fetchAllTransactions = async () => {
+    if (!school?.id) return [];
+    
     const pageSize = 1000;
     let from = 0;
     let to = pageSize - 1;
@@ -48,6 +62,7 @@ export const Transactions = () => {
       const { data: batch, error } = await supabase
         .from('synced_transactions')
         .select('*')
+        .eq('school_id', school.id)
         .eq('status', 'RECEBIDO')
         .order('transaction_date', { ascending: false })
         .range(from, to);
@@ -185,12 +200,16 @@ export const Transactions = () => {
     toast.success(`Relatório exportado com sucesso! ${filteredTransactions.length} lançamento(s)`);
   };
 
-  if (loading) {
+  if (loading || schoolLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
+  }
+
+  if (!school) {
+    return null;
   }
 
   const incomeTransactions = filteredTransactions.filter(t => t.type === 'income');
@@ -201,7 +220,7 @@ export const Transactions = () => {
   return (
     <div className="space-y-6">
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold text-primary">Colégio Paulo Freire</h1>
+        <h1 className="text-2xl font-semibold text-primary">{school.name}</h1>
       </div>
       
       <div>

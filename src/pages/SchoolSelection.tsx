@@ -1,14 +1,62 @@
 import { useNavigate } from "react-router-dom";
-import { useUserRole } from "@/hooks/useUserRole";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import colegioLogo from "@/assets/colegio-paulo-freire.png";
+import aventurandoLogo from "@/assets/colegio-aventurando.png";
+import { Loader2 } from "lucide-react";
+
+interface School {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string;
+}
 
 const SchoolSelection = () => {
   const navigate = useNavigate();
-  const { isAdmin } = useUserRole();
+  const [schools, setSchools] = useState<School[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleSchoolClick = () => {
-    navigate("/dashboard");
+  useEffect(() => {
+    loadSchools();
+  }, []);
+
+  const loadSchools = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('schools')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        console.error('Error loading schools:', error);
+      } else if (data) {
+        setSchools(data);
+      }
+    } catch (error) {
+      console.error('Error loading schools:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const getSchoolLogo = (slug: string) => {
+    if (slug === 'paulo-freire') return colegioLogo;
+    if (slug === 'aventurando') return aventurandoLogo;
+    return colegioLogo;
+  };
+
+  const handleSchoolClick = (slug: string) => {
+    navigate(`/school/${slug}/dashboard`);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
@@ -16,16 +64,24 @@ const SchoolSelection = () => {
         Selecione a escola para visualizar
       </h1>
       
-      <button
-        onClick={handleSchoolClick}
-        className="transition-all duration-300 hover:scale-105 hover:shadow-2xl rounded-lg overflow-hidden bg-card border-2 border-border hover:border-primary p-8"
-      >
-        <img 
-          src={colegioLogo} 
-          alt="Colégio Paulo Freire" 
-          className="w-96 h-auto"
-        />
-      </button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 w-full max-w-7xl">
+        {schools.map((school) => (
+          <button
+            key={school.id}
+            onClick={() => handleSchoolClick(school.slug)}
+            className="transition-all duration-300 hover:scale-105 hover:shadow-2xl rounded-lg overflow-hidden bg-card border-2 border-border hover:border-primary p-6 flex flex-col items-center justify-center min-h-[200px]"
+          >
+            <img 
+              src={getSchoolLogo(school.slug)} 
+              alt={school.name} 
+              className="w-full h-auto max-w-[250px] object-contain"
+            />
+            <p className="mt-4 text-sm font-medium text-foreground text-center">
+              {school.name}
+            </p>
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

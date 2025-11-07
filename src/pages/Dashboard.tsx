@@ -11,8 +11,12 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useSchool } from "@/contexts/SchoolContext";
+import { useNavigate } from "react-router-dom";
 
 export const Dashboard = () => {
+  const navigate = useNavigate();
+  const { school, loading: schoolLoading } = useSchool();
   const [stats, setStats] = useState({
     totalIncome: 0,
     totalExpense: 0,
@@ -25,10 +29,20 @@ export const Dashboard = () => {
   const [endDate, setEndDate] = useState<Date>(new Date());
 
   useEffect(() => {
-    loadDashboardData();
-  }, [startDate, endDate]);
+    if (!schoolLoading && !school) {
+      navigate('/schools');
+    }
+  }, [school, schoolLoading, navigate]);
+
+  useEffect(() => {
+    if (school?.id) {
+      loadDashboardData();
+    }
+  }, [startDate, endDate, school?.id]);
 
   const fetchAllTransactions = async (startDateStr: string, endDateStr: string) => {
+    if (!school?.id) return [];
+    
     const pageSize = 1000;
     let from = 0;
     let to = pageSize - 1;
@@ -38,6 +52,7 @@ export const Dashboard = () => {
       const { data: batch, error } = await supabase
         .from('synced_transactions')
         .select('type, amount, transaction_date, status')
+        .eq('school_id', school.id)
         .eq('status', 'RECEBIDO')
         .gte('transaction_date', startDateStr)
         .lte('transaction_date', endDateStr)
@@ -164,7 +179,7 @@ export const Dashboard = () => {
     }
   };
 
-  if (loading) {
+  if (loading || schoolLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -172,10 +187,14 @@ export const Dashboard = () => {
     );
   }
 
+  if (!school) {
+    return null;
+  }
+
   return (
     <div className="space-y-8">
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold text-primary">Colégio Paulo Freire</h1>
+        <h1 className="text-2xl font-semibold text-primary">{school.name}</h1>
       </div>
       
       <div className="flex items-center justify-between">

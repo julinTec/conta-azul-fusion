@@ -56,6 +56,7 @@ export type Database = {
           expires_at: string
           id: string
           refresh_token: string | null
+          school_id: string | null
           updated_at: string
           updated_by: string
         }
@@ -65,6 +66,7 @@ export type Database = {
           expires_at: string
           id?: string
           refresh_token?: string | null
+          school_id?: string | null
           updated_at?: string
           updated_by: string
         }
@@ -74,10 +76,19 @@ export type Database = {
           expires_at?: string
           id?: string
           refresh_token?: string | null
+          school_id?: string | null
           updated_at?: string
           updated_by?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "conta_azul_config_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -100,6 +111,30 @@ export type Database = {
         }
         Relationships: []
       }
+      schools: {
+        Row: {
+          created_at: string | null
+          id: string
+          logo_url: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          logo_url: string
+          name: string
+          slug: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          logo_url?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       synced_transactions: {
         Row: {
           amount: number
@@ -110,6 +145,7 @@ export type Database = {
           external_id: string
           id: string
           raw_data: Json | null
+          school_id: string | null
           status: string | null
           synced_at: string
           transaction_date: string
@@ -124,6 +160,7 @@ export type Database = {
           external_id: string
           id?: string
           raw_data?: Json | null
+          school_id?: string | null
           status?: string | null
           synced_at?: string
           transaction_date: string
@@ -138,12 +175,21 @@ export type Database = {
           external_id?: string
           id?: string
           raw_data?: Json | null
+          school_id?: string | null
           status?: string | null
           synced_at?: string
           transaction_date?: string
           type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "synced_transactions_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {
