@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
+import SchoolSelection from "./pages/SchoolSelection";
 import { AdminGuard } from "./components/AdminGuard";
 import { AdminPanel } from "./components/AdminPanel";
 
@@ -24,6 +25,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/schools" element={<SchoolSelection />} />
           <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
           <Route path="/transactions" element={<Layout><Transactions /></Layout>} />
           <Route path="/users" element={<AdminGuard><Layout><UserManagement /></Layout></AdminGuard>} />

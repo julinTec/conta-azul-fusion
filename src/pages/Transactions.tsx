@@ -200,6 +200,10 @@ export const Transactions = () => {
 
   return (
     <div className="space-y-6">
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold text-primary">Colégio Paulo Freire</h1>
+      </div>
+      
       <div>
         <h2 className="text-3xl font-bold">Lançamentos</h2>
         <p className="text-muted-foreground mt-2">

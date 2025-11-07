@@ -1,21 +1,16 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Layout } from "@/components/Layout";
-import { Dashboard } from "@/pages/Dashboard";
+import SchoolSelection from "@/pages/SchoolSelection";
 
 const Index = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Redirect to dashboard by default
-    navigate("/dashboard", { replace: true });
+    // Redirect to school selection by default
+    navigate("/schools", { replace: true });
   }, [navigate]);
 
-  return (
-    <Layout>
-      <Dashboard />
-    </Layout>
-  );
+  return <SchoolSelection />;
 };
 
 export default Index;

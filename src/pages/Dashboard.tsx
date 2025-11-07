@@ -166,6 +166,10 @@ export const Dashboard = () => {
 
   return (
     <div className="space-y-8">
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold text-primary">Colégio Paulo Freire</h1>
+      </div>
+      
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold">Dashboard Financeiro</h2>
