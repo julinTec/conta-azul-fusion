@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, List, Users } from "lucide-react";
+import { LogOut, LayoutDashboard, List, Users, School } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
 
@@ -67,9 +67,19 @@ export const Layout = ({ children }: LayoutProps) => {
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            FinanceFlow
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              FinanceFlow
+            </h1>
+            <Button 
+              onClick={() => navigate("/schools")} 
+              variant="outline" 
+              size="sm"
+            >
+              <School className="h-4 w-4 mr-2" />
+              Escolas
+            </Button>
+          </div>
           <div className="flex items-center gap-4">
             <nav className="flex items-center gap-2">
               <Link to="/dashboard">
