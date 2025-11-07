@@ -3,9 +3,14 @@ import { DashboardStats } from "@/components/DashboardStats";
 import { AdminPanel } from "@/components/AdminPanel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Calendar, TrendingUp } from "lucide-react";
+import { Calendar as CalendarIcon, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -16,12 +21,14 @@ export const Dashboard = () => {
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState<Date>(new Date(2025, 3, 1)); // 1º de abril de 2025
+  const [endDate, setEndDate] = useState<Date>(new Date());
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [startDate, endDate]);
 
-  const fetchAllTransactions = async (startDateStr: string) => {
+  const fetchAllTransactions = async (startDateStr: string, endDateStr: string) => {
     const pageSize = 1000;
     let from = 0;
     let to = pageSize - 1;
@@ -33,6 +40,7 @@ export const Dashboard = () => {
         .select('type, amount, transaction_date, status')
         .eq('status', 'RECEBIDO')
         .gte('transaction_date', startDateStr)
+        .lte('transaction_date', endDateStr)
         .order('transaction_date', { ascending: true })
         .range(from, to);
 
@@ -54,16 +62,16 @@ export const Dashboard = () => {
       setLoading(true);
       
       const now = new Date();
-      const startDate = new Date(2025, 3, 1); // 1º de abril de 2025
       const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
       
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      // Buscar todas as transações desde abril/2025 com paginação
-      const transactions = await fetchAllTransactions(startDateStr);
+      // Buscar todas as transações do período selecionado com paginação
+      const transactions = await fetchAllTransactions(startDateStr, endDateStr);
 
       // Debug logs
       console.log('Dashboard data fetch (paginated):', {
@@ -114,10 +122,10 @@ export const Dashboard = () => {
         previousBalance,
       });
 
-      // Construir dados do gráfico desde abril/2025
+      // Construir dados do gráfico para o período selecionado
       const months = [];
-      let cursor = new Date(2025, 3, 1); // Abril de 2025
-      const lastMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const lastMonthStart = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
 
       while (cursor <= lastMonthStart) {
         const monthTransactions = transactions.filter(t => {
@@ -174,11 +182,74 @@ export const Dashboard = () => {
         <div>
           <h2 className="text-3xl font-bold">Dashboard Financeiro</h2>
           <div className="flex items-center gap-2 mt-2 text-muted-foreground">
-            <Calendar className="h-4 w-4" />
+            <CalendarIcon className="h-4 w-4" />
             <span>{new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Período</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">De</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "dd/MM/yyyy") : <span>Selecione a data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={(date) => date && setStartDate(date)}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            <div className="flex-1">
+              <label className="text-sm font-medium mb-2 block">Até</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "dd/MM/yyyy") : <span>Selecione a data</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={(date) => date && setEndDate(date)}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <AdminPanel />
 
