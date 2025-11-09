@@ -16,10 +16,28 @@ const SchoolSelection = () => {
   const navigate = useNavigate();
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    loadSchools();
+    checkAuth();
   }, []);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      navigate("/auth", { replace: true });
+      return;
+    }
+    
+    setCheckingAuth(false);
+  };
+
+  useEffect(() => {
+    if (!checkingAuth) {
+      loadSchools();
+    }
+  }, [checkingAuth]);
 
   const loadSchools = async () => {
     try {
@@ -50,7 +68,7 @@ const SchoolSelection = () => {
     navigate(`/school/${slug}/dashboard`);
   };
 
-  if (loading) {
+  if (checkingAuth || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
