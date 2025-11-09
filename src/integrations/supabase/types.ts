@@ -113,6 +113,7 @@ export type Database = {
       }
       schools: {
         Row: {
+          code: string
           created_at: string | null
           id: string
           logo_url: string
@@ -120,6 +121,7 @@ export type Database = {
           slug: string
         }
         Insert: {
+          code: string
           created_at?: string | null
           id?: string
           logo_url: string
@@ -127,6 +129,7 @@ export type Database = {
           slug: string
         }
         Update: {
+          code?: string
           created_at?: string | null
           id?: string
           logo_url?: string

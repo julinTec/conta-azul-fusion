@@ -4,11 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { LogIn, RefreshCw, Database, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useSchool } from "@/contexts/SchoolContext";
 
 const CLIENT_ID = "2imfke8a0e9jc4v9qm01r1m9s1";
 const REDIRECT_URI = "https://e67bcf1c-e649-449f-b1c3-6b34a01b3f70.lovableproject.com/auth/callback";
 
 export const AdminPanel = () => {
+  const { school } = useSchool();
   const [syncing, setSyncing] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
@@ -75,9 +77,16 @@ export const AdminPanel = () => {
 
   const loadSyncStats = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('synced_transactions')
         .select('transaction_date, amount, type, synced_at');
+      
+      // Filtrar por escola se disponível
+      if (school?.id) {
+        query = query.eq('school_id', school.id);
+      }
+      
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -199,12 +208,14 @@ export const AdminPanel = () => {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('sync-conta-azul');
+      const { data, error } = await supabase.functions.invoke('sync-conta-azul', {
+        body: { school_id: school?.id }
+      });
 
       if (error) throw error;
 
       toast.success(data.message || 'Sincronização concluída!');
-      toast.info(`${data.count} transações sincronizadas`);
+      toast.info(`${data.count} transações sincronizadas para ${school?.name}`);
       
       // Recarregar estatísticas após sincronização
       await loadSyncStats();
@@ -221,7 +232,9 @@ export const AdminPanel = () => {
     try {
       // Primeiro, limpar os dados
       toast.info('Limpando dados antigos...');
-      const { error: clearError } = await supabase.functions.invoke('clear-synced-data');
+      const { error: clearError } = await supabase.functions.invoke('clear-synced-data', {
+        body: { school_id: school?.id }
+      });
 
       if (clearError) throw clearError;
 
@@ -230,12 +243,14 @@ export const AdminPanel = () => {
       // Depois, sincronizar novamente
       toast.info('Iniciando sincronização...');
       setSyncing(true);
-      const { data, error: syncError } = await supabase.functions.invoke('sync-conta-azul');
+      const { data, error: syncError } = await supabase.functions.invoke('sync-conta-azul', {
+        body: { school_id: school?.id }
+      });
 
       if (syncError) throw syncError;
 
       toast.success(data.message || 'Sincronização concluída!');
-      toast.info(`${data.count} transações sincronizadas`);
+      toast.info(`${data.count} transações sincronizadas para ${school?.name}`);
       
       // Recarregar estatísticas
       await loadSyncStats();

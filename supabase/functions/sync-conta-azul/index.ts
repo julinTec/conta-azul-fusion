@@ -39,6 +39,24 @@ serve(async (req) => {
       throw new Error('Acesso negado. Apenas administradores podem sincronizar.');
     }
 
+    // Receber school_id do body
+    const body = await req.json();
+    const { school_id } = body;
+
+    // Buscar escola padrão se não fornecido (compatibilidade)
+    let targetSchoolId = school_id;
+    if (!targetSchoolId) {
+      console.log('No school_id provided, using Paulo Freire as default');
+      const { data: defaultSchool } = await supabaseClient
+        .from('schools')
+        .select('id')
+        .eq('slug', 'paulo-freire')
+        .single();
+      targetSchoolId = defaultSchool?.id;
+    }
+
+    console.log('Syncing for school_id:', targetSchoolId);
+
     // Buscar configuração do Conta Azul
     const { data: config, error: configError } = await supabaseClient
       .from('conta_azul_config')
@@ -188,6 +206,7 @@ serve(async (req) => {
         category_name: 'Receita',
         category_color: '#22c55e',
         entity_name: item.fornecedor?.nome || null,
+        school_id: targetSchoolId,
         raw_data: item,
       })),
       ...filteredPagarItems.map((item: any) => ({
@@ -200,6 +219,7 @@ serve(async (req) => {
         category_name: 'Despesa',
         category_color: '#ef4444',
         entity_name: item.fornecedor?.nome || null,
+        school_id: targetSchoolId,
         raw_data: item,
       })),
     ];

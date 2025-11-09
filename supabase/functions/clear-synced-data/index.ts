@@ -46,20 +46,32 @@ serve(async (req) => {
       );
     }
 
-    console.log('Admin user clearing synced_transactions table');
+    // Receber school_id do body
+    const body = await req.json();
+    const { school_id } = body;
 
-    // Deletar todos os registros da tabela synced_transactions
-    const { error: deleteError } = await supabaseClient
+    let deleteQuery = supabaseClient
       .from('synced_transactions')
-      .delete()
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // deleta todos os registros
+      .delete();
+
+    // Se school_id fornecido, deletar apenas dessa escola
+    if (school_id) {
+      deleteQuery = deleteQuery.eq('school_id', school_id);
+      console.log('Clearing data for school_id:', school_id);
+    } else {
+      // Caso contrário, deletar tudo (compatibilidade)
+      deleteQuery = deleteQuery.neq('id', '00000000-0000-0000-0000-000000000000');
+      console.log('Clearing all data');
+    }
+
+    const { error: deleteError } = await deleteQuery;
 
     if (deleteError) {
       console.error('Error deleting synced_transactions:', deleteError);
       throw deleteError;
     }
 
-    console.log('Successfully cleared all synced_transactions');
+    console.log('Successfully cleared synced_transactions');
 
     return new Response(
       JSON.stringify({ 
