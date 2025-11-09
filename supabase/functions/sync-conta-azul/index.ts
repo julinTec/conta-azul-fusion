@@ -61,11 +61,12 @@ serve(async (req) => {
     let accessToken = config.access_token;
     let refreshToken = config.refresh_token;
 
-    // Verificar se o token precisa ser atualizado
+    // Verificar se o token precisa ser atualizado (com buffer de 5 minutos)
     const now = new Date();
     const expiresAt = new Date(config.expires_at);
+    const bufferTime = 5 * 60 * 1000; // 5 minutos em milissegundos
 
-    if (expiresAt <= now) {
+    if (expiresAt.getTime() <= now.getTime() + bufferTime) {
       console.log('Token expired, refreshing...');
       
       // Refresh token

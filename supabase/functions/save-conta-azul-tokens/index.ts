@@ -43,17 +43,40 @@ serve(async (req) => {
 
     console.log('Saving tokens to conta_azul_config for user:', user.id);
 
-    // Salvar tokens diretamente na tabela conta_azul_config
-    const { error: configError } = await supabaseClient
+    // Verificar se já existe uma configuração
+    const { data: existingConfig } = await supabaseClient
       .from('conta_azul_config')
-      .upsert({
-        access_token: access_token,
-        refresh_token: refresh_token,
-        expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
-        updated_by: user.id,
-      });
+      .select('id')
+      .limit(1)
+      .maybeSingle();
 
-    if (configError) throw new Error(`Failed to save tokens: ${configError.message}`);
+    if (existingConfig) {
+      // Atualizar configuração existente
+      const { error: updateError } = await supabaseClient
+        .from('conta_azul_config')
+        .update({
+          access_token: access_token,
+          refresh_token: refresh_token,
+          expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+          updated_by: user.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingConfig.id);
+
+      if (updateError) throw new Error(`Failed to update tokens: ${updateError.message}`);
+    } else {
+      // Criar nova configuração
+      const { error: insertError } = await supabaseClient
+        .from('conta_azul_config')
+        .insert({
+          access_token: access_token,
+          refresh_token: refresh_token,
+          expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+          updated_by: user.id,
+        });
+
+      if (insertError) throw new Error(`Failed to insert tokens: ${insertError.message}`);
+    }
 
     console.log('Tokens saved successfully to conta_azul_config');
 
