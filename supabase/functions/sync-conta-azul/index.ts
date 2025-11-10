@@ -106,7 +106,9 @@ serve(async (req) => {
       });
 
       if (!tokenResponse.ok) {
-        throw new Error('Falha ao atualizar token');
+        const errorText = await tokenResponse.text();
+        console.error('Token refresh failed:', errorText);
+        throw new Error('Os tokens expiraram. Por favor, desconecte e reconecte ao Conta Azul no painel administrativo.');
       }
 
       const tokenData = await tokenResponse.json();
@@ -161,7 +163,12 @@ serve(async (req) => {
         });
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch data: ${response.status}`);
+          const errorText = await response.text();
+          console.error(`Conta Azul fetch failed ${response.status}:`, errorText);
+          if (response.status === 401) {
+            throw new Error('Token de acesso inválido. Por favor, desconecte e reconecte ao Conta Azul no painel administrativo.');
+          }
+          throw new Error(`Erro ao buscar dados do Conta Azul: ${response.status}`);
         }
 
         const data = await response.json();
