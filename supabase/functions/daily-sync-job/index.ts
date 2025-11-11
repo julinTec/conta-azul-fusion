@@ -18,61 +18,47 @@ type ContaAzulConfig = {
 
 // Função removida - não precisamos mais do Vault
 
-function toISODate(d?: string | null) {
-  if (!d) return null;
-  return (d.includes("T") ? d.split("T")[0] : d) || null;
-}
-
-async function fetchAllPages(url: string, accessToken: string, pageSize = 100) {
-  const all: any[] = [];
+// Helper function to fetch all pages from Conta Azul API v2
+async function fetchAllPages(
+  endpoint: string,
+  accessToken: string,
+  params: Record<string, string>
+) {
+  const allItems: any[] = [];
   let page = 1;
+  const baseUrl = 'https://api-v2.contaazul.com';
+
   while (true) {
-    const sep = url.includes("?") ? "&" : "?";
-    const pageUrl = `${url}${sep}page=${page}&size=${pageSize}`;
-    const res = await fetch(pageUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const url = new URL(`${baseUrl}${endpoint}`);
+    Object.entries({ ...params, pagina: page.toString(), tamanho_pagina: '100' }).forEach(([key, value]) => {
+      url.searchParams.append(key, value);
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Conta Azul fetch failed ${res.status}: ${text}`);
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Conta Azul v2 API fetch failed ${response.status}:`, errorText);
+      if (response.status === 401) {
+        throw new Error('Token de acesso inválido ou expirado. A sincronização falhará até reconectar ao Conta Azul.');
+      }
+      throw new Error(`Erro ao buscar dados do Conta Azul: ${response.status}`);
     }
-    const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) break;
-    all.push(...data);
-    if (data.length < pageSize) break;
-    page += 1;
+
+    const data = await response.json();
+    const items = data?.itens || [];
+    if (items.length === 0) break;
+
+    allItems.push(...items);
+    page++;
   }
-  return all;
-}
 
-function transformReceivable(item: any) {
-  return {
-    external_id: String(item.id),
-    type: "income",
-    description: item.description ?? "Receita",
-    amount: Number(item.value ?? 0),
-    transaction_date: toISODate(item.competency_date) || toISODate(item.emission_date) || toISODate(item.due_date) || toISODate(item.payment_date),
-    status: item.status ?? null,
-    category_name: item.category?.name ?? "Receita",
-    category_color: "#22c55e",
-    entity_name: item.customer?.name ?? null,
-    raw_data: item,
-  };
-}
-
-function transformPayable(item: any) {
-  return {
-    external_id: String(item.id),
-    type: "expense",
-    description: item.description ?? "Despesa",
-    amount: Number(item.value ?? 0),
-    transaction_date: toISODate(item.competency_date) || toISODate(item.emission_date) || toISODate(item.due_date) || toISODate(item.payment_date),
-    status: item.status ?? null,
-    category_name: item.category?.name ?? "Despesa",
-    category_color: "#ef4444",
-    entity_name: item.supplier?.name ?? null,
-    raw_data: item,
-  };
+  return allItems;
 }
 
 async function chunkedUpsert(supabase: any, rows: any[], chunkSize = 500) {
@@ -176,30 +162,69 @@ serve(async (req) => {
       console.log("Token refreshed and saved to database.");
     }
 
-    // 3) Fetch data from Conta Azul
+    // 3) Fetch data from Conta Azul using v2 API
     const endDate = new Date().toISOString().split("T")[0];
     console.log(`Fetching receivables/payables from ${START_DATE} to ${endDate}...`);
 
-    const receivables = await fetchAllPages(
-      `https://api.contaazul.com/v1/receivables?emission_start=${START_DATE}&emission_end=${endDate}`,
-      accessToken
+    // Buscar escola padrão (Paulo Freire)
+    const { data: defaultSchool } = await supabase
+      .from('schools')
+      .select('id')
+      .eq('slug', 'paulo-freire')
+      .maybeSingle();
+    const schoolId = defaultSchool?.id;
+
+    const params = {
+      'data_vencimento_de': START_DATE,
+      'data_vencimento_ate': endDate,
+    };
+
+    // Buscar contas a receber e a pagar usando v2 API
+    const [receberItems, pagarItems] = await Promise.all([
+      fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-receber/buscar', accessToken, params),
+      fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', accessToken, params),
+    ]);
+
+    // Filtrar apenas itens com status "RECEBIDO"
+    const filteredReceberItems = receberItems.filter((item: any) => 
+      item.status_traduzido === 'RECEBIDO'
     );
-    const payables = await fetchAllPages(
-      `https://api.contaazul.com/v1/payables?emission_start=${START_DATE}&emission_end=${endDate}`,
-      accessToken
+    const filteredPagarItems = pagarItems.filter((item: any) => 
+      item.status_traduzido === 'RECEBIDO'
     );
 
-    const incomeRows = receivables
-      .filter((r: any) => r?.status === "RECEBIDO")
-      .map(transformReceivable)
-      .filter((r) => !!r.transaction_date);
-    const expenseRows = payables
-      .filter((p: any) => p?.status === "RECEBIDO")
-      .map(transformPayable)
-      .filter((p) => !!p.transaction_date);
+    // Mapear para o formato da tabela (alinhado com sync-conta-azul)
+    const incomeRows = filteredReceberItems.map((item: any) => ({
+      external_id: `receber_${item.id}`,
+      type: 'income',
+      amount: item.pago ?? 0,
+      description: item.descricao || 'Conta a Receber',
+      transaction_date: item.data_vencimento,
+      status: item.status_traduzido,
+      category_name: 'Receita',
+      category_color: '#22c55e',
+      entity_name: item.fornecedor?.nome || null,
+      school_id: schoolId,
+      raw_data: item,
+    }));
+
+    const expenseRows = filteredPagarItems.map((item: any) => ({
+      external_id: `pagar_${item.id}`,
+      type: 'expense',
+      amount: item.pago ?? 0,
+      description: item.descricao || 'Conta a Pagar',
+      transaction_date: item.data_vencimento,
+      status: item.status_traduzido,
+      category_name: 'Despesa',
+      category_color: '#ef4444',
+      entity_name: item.fornecedor?.nome || null,
+      school_id: schoolId,
+      raw_data: item,
+    }));
+
     const allRows = [...incomeRows, ...expenseRows];
 
-    console.log(`Fetched receivables=${receivables.length}, payables=${payables.length}. To upsert=${allRows.length}`);
+    console.log(`Fetched ${receberItems.length} contas a receber, ${pagarItems.length} contas a pagar. Filtered to ${allRows.length} RECEBIDO transactions`);
 
     // 4) Clear and upsert
     const { error: delError } = await supabase
@@ -232,8 +257,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        received: receivables.length,
-        payables: payables.length,
+        received: receberItems.length,
+        payables: pagarItems.length,
         insertedOrUpdated: allRows.length,
         ranAt: new Date().toISOString(),
       }),
