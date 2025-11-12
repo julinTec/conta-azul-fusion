@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useSchool } from "@/contexts/SchoolContext";
 import { useNavigate } from "react-router-dom";
@@ -17,16 +18,27 @@ import { useNavigate } from "react-router-dom";
 export const Dashboard = () => {
   const navigate = useNavigate();
   const { school, loading: schoolLoading } = useSchool();
+  const getPreviousMonthDates = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { firstDay, lastDay };
+  };
+
+  const { firstDay, lastDay } = getPreviousMonthDates();
+  
   const [stats, setStats] = useState({
     totalIncome: 0,
     totalExpense: 0,
     balance: 0,
     previousBalance: 0,
+    previousIncome: 0,
+    previousExpense: 0,
   });
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [startDate, setStartDate] = useState<Date>(new Date(2025, 3, 1)); // 1º de abril de 2025
-  const [endDate, setEndDate] = useState<Date>(new Date());
+  const [startDate, setStartDate] = useState<Date>(firstDay);
+  const [endDate, setEndDate] = useState<Date>(lastDay);
 
   useEffect(() => {
     if (!schoolLoading && !school) {
@@ -113,18 +125,21 @@ export const Dashboard = () => {
 
       const balance = totalIncome - totalExpense;
 
-      // Calcular mês anterior para comparação
-      const previousTransactions = transactions.filter(t => {
-        const [year, month] = t.transaction_date.split('-').map(Number);
-        return year === previousMonthStart.getFullYear() && 
-               month === (previousMonthStart.getMonth() + 1);
-      });
+      // Calcular período M-2 (dois meses atrás do período selecionado)
+      const previousPeriodStart = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
+      const previousPeriodEnd = new Date(startDate.getFullYear(), startDate.getMonth(), 0);
 
-      const previousIncome = previousTransactions
+      // Buscar transações do período anterior (M-2)
+      const previousPeriodTransactions = await fetchAllTransactions(
+        previousPeriodStart.toISOString().split('T')[0],
+        previousPeriodEnd.toISOString().split('T')[0]
+      );
+
+      const previousIncome = previousPeriodTransactions
         .filter(t => t.type === 'income')
         .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
       
-      const previousExpense = previousTransactions
+      const previousExpense = previousPeriodTransactions
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
 
@@ -135,6 +150,8 @@ export const Dashboard = () => {
         totalExpense,
         balance,
         previousBalance,
+        previousIncome,
+        previousExpense,
       });
 
       // Construir dados do gráfico para o período selecionado
@@ -199,12 +216,19 @@ export const Dashboard = () => {
       
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold">Dashboard Financeiro</h2>
+          <h2 className="text-3xl font-bold">
+            Dashboard Financeiro - {format(startDate, "MMMM 'de' yyyy", { locale: ptBR })}
+          </h2>
           <div className="flex items-center gap-2 mt-2 text-muted-foreground">
             <CalendarIcon className="h-4 w-4" />
-            <span>{new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
+            <span>
+              {format(startDate, "dd/MM/yyyy")} - {format(endDate, "dd/MM/yyyy")}
+            </span>
           </div>
         </div>
+        <p className="text-sm text-muted-foreground italic">
+          *Contém os valores de Aportes.
+        </p>
       </div>
 
       <Card>
@@ -277,6 +301,8 @@ export const Dashboard = () => {
         totalExpense={stats.totalExpense}
         balance={stats.balance}
         previousBalance={stats.previousBalance}
+        previousIncome={stats.previousIncome}
+        previousExpense={stats.previousExpense}
       />
 
       <Card>

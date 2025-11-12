@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { TransactionStats } from "@/components/TransactionStats";
 import { useSchool } from "@/contexts/SchoolContext";
 import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface Transaction {
   id: string;
@@ -25,14 +27,26 @@ interface Transaction {
 }
 
 export const Transactions = () => {
+  const getPreviousMonthDates = () => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { 
+      start: firstDay.toISOString().split('T')[0], 
+      end: lastDay.toISOString().split('T')[0] 
+    };
+  };
+
+  const { start, end } = getPreviousMonthDates();
+  
   const navigate = useNavigate();
   const { school, loading: schoolLoading } = useSchool();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(start);
+  const [endDate, setEndDate] = useState(end);
 
   useEffect(() => {
     if (!schoolLoading && !school) {
@@ -223,10 +237,17 @@ export const Transactions = () => {
         <h1 className="text-2xl font-semibold text-primary">{school.name}</h1>
       </div>
       
-      <div>
-        <h2 className="text-3xl font-bold">Lançamentos</h2>
-        <p className="text-muted-foreground mt-2">
-          Visualize todos os lançamentos de receitas e despesas
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold">
+            Lançamentos - {startDate ? format(new Date(startDate), "MMMM 'de' yyyy", { locale: ptBR }) : 'Todos os períodos'}
+          </h2>
+          <p className="text-muted-foreground mt-2">
+            Visualize todos os lançamentos de receitas e despesas
+          </p>
+        </div>
+        <p className="text-sm text-muted-foreground italic">
+          *Contém os valores de Aportes.
         </p>
       </div>
 

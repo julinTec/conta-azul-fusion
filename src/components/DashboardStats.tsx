@@ -6,6 +6,8 @@ interface DashboardStatsProps {
   totalExpense: number;
   balance: number;
   previousBalance: number;
+  previousIncome: number;
+  previousExpense: number;
 }
 
 export const DashboardStats = ({
@@ -13,10 +15,22 @@ export const DashboardStats = ({
   totalExpense,
   balance,
   previousBalance,
+  previousIncome,
+  previousExpense,
 }: DashboardStatsProps) => {
   const balanceChange = balance - previousBalance;
   const balanceChangePercent = previousBalance !== 0 
     ? ((balanceChange / Math.abs(previousBalance)) * 100).toFixed(1)
+    : 0;
+
+  const incomeChange = totalIncome - previousIncome;
+  const incomeChangePercent = previousIncome !== 0 
+    ? ((incomeChange / previousIncome) * 100).toFixed(1)
+    : 0;
+
+  const expenseChange = totalExpense - previousExpense;
+  const expenseChangePercent = previousExpense !== 0 
+    ? ((expenseChange / previousExpense) * 100).toFixed(1)
     : 0;
 
   const formatCurrency = (value: number) => {
@@ -37,7 +51,23 @@ export const DashboardStats = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Total geral</p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-muted-foreground">Total geral</p>
+            <div className="flex items-center text-xs">
+              {incomeChange >= 0 ? (
+                <>
+                  <ArrowUpRight className="h-3 w-3 text-green-600 mr-1" />
+                  <span className="text-green-600 font-medium">+{incomeChangePercent}%</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDownRight className="h-3 w-3 text-red-600 mr-1" />
+                  <span className="text-red-600 font-medium">{incomeChangePercent}%</span>
+                </>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">vs mês anterior</p>
         </CardContent>
       </Card>
 
@@ -50,7 +80,23 @@ export const DashboardStats = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpense)}</div>
-          <p className="text-xs text-muted-foreground mt-1">Total geral</p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-xs text-muted-foreground">Total geral</p>
+            <div className="flex items-center text-xs">
+              {expenseChange >= 0 ? (
+                <>
+                  <ArrowUpRight className="h-3 w-3 text-red-600 mr-1" />
+                  <span className="text-red-600 font-medium">+{expenseChangePercent}%</span>
+                </>
+              ) : (
+                <>
+                  <ArrowDownRight className="h-3 w-3 text-green-600 mr-1" />
+                  <span className="text-green-600 font-medium">{expenseChangePercent}%</span>
+                </>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">vs mês anterior</p>
         </CardContent>
       </Card>
 
