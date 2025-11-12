@@ -52,7 +52,7 @@ export const DashboardStats = ({
         <CardContent>
           <div className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</div>
           <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-muted-foreground">Total geral</p>
+            <p className="text-xs text-muted-foreground">Total</p>
             <div className="flex items-center text-xs">
               {incomeChange >= 0 ? (
                 <>
@@ -81,7 +81,7 @@ export const DashboardStats = ({
         <CardContent>
           <div className="text-2xl font-bold text-red-600">{formatCurrency(totalExpense)}</div>
           <div className="flex items-center justify-between mt-2">
-            <p className="text-xs text-muted-foreground">Total geral</p>
+            <p className="text-xs text-muted-foreground">Total</p>
             <div className="flex items-center text-xs">
               {expenseChange >= 0 ? (
                 <>

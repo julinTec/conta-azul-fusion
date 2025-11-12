@@ -159,8 +159,16 @@ export const Transactions = () => {
 
   const clearFilters = () => {
     setSearchTerm("");
-    setStartDate("");
-    setEndDate("");
+    const { start, end } = getPreviousMonthDates();
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const getFormattedMonth = (dateString: string) => {
+    if (!dateString) return 'Todos os períodos';
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return format(date, "MMMM 'de' yyyy", { locale: ptBR });
   };
 
   const formatCurrency = (value: number) => {
@@ -238,10 +246,10 @@ export const Transactions = () => {
       </div>
       
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold">
-            Lançamentos - {startDate ? format(new Date(startDate), "MMMM 'de' yyyy", { locale: ptBR }) : 'Todos os períodos'}
-          </h2>
+          <div>
+            <h2 className="text-3xl font-bold">
+              Lançamentos - {getFormattedMonth(startDate)}
+            </h2>
           <p className="text-muted-foreground mt-2">
             Visualize todos os lançamentos de receitas e despesas
           </p>
