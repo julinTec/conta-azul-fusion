@@ -84,6 +84,36 @@ export const Dashboard = () => {
     return all;
   };
 
+  const fetchAllTransactionsForChart = async () => {
+    if (!school?.id) return [];
+    
+    const pageSize = 1000;
+    let from = 0;
+    let to = pageSize - 1;
+    const all: any[] = [];
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('synced_transactions')
+        .select('type, amount, transaction_date, status')
+        .eq('school_id', school.id)
+        .eq('status', 'RECEBIDO')
+        .order('transaction_date', { ascending: true })
+        .range(from, to);
+
+      if (error) throw error;
+      if (!batch || batch.length === 0) break;
+
+      all.push(...batch);
+      if (batch.length < pageSize) break;
+
+      from += pageSize;
+      to += pageSize;
+    }
+
+    return all;
+  };
+
   const loadDashboardData = async () => {
     try {
       setLoading(true);
@@ -125,11 +155,31 @@ export const Dashboard = () => {
 
       const balance = totalIncome - totalExpense;
 
-      // Calcular período M-2 (dois meses atrás do período selecionado)
-      const previousPeriodStart = new Date(startDate.getFullYear(), startDate.getMonth() - 1, 1);
-      const previousPeriodEnd = new Date(startDate.getFullYear(), startDate.getMonth(), 0);
+      // Calcular número de meses no período selecionado
+      const monthsInPeriod = (endDate.getFullYear() - startDate.getFullYear()) * 12 
+                           + (endDate.getMonth() - startDate.getMonth()) + 1;
 
-      // Buscar transações do período anterior (M-2)
+      console.log('Período selecionado:', {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        monthsInPeriod
+      });
+
+      // Calcular período de comparação (mesmo número de meses ANTES do período selecionado)
+      const previousPeriodEnd = new Date(startDate.getFullYear(), startDate.getMonth(), 0);
+      const previousPeriodStart = new Date(
+        previousPeriodEnd.getFullYear(),
+        previousPeriodEnd.getMonth() - monthsInPeriod + 1,
+        1
+      );
+
+      console.log('Período de comparação:', {
+        previousPeriodStart: previousPeriodStart.toISOString().split('T')[0],
+        previousPeriodEnd: previousPeriodEnd.toISOString().split('T')[0],
+        months: monthsInPeriod
+      });
+
+      // Buscar transações do período de comparação
       const previousPeriodTransactions = await fetchAllTransactions(
         previousPeriodStart.toISOString().split('T')[0],
         previousPeriodEnd.toISOString().split('T')[0]
@@ -154,40 +204,53 @@ export const Dashboard = () => {
         previousExpense,
       });
 
-      // Construir dados do gráfico para o período selecionado
-      const months = [];
-      let cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-      const lastMonthStart = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      // Buscar TODAS as transações para o gráfico (sem filtro de data)
+      const allTransactionsForChart = await fetchAllTransactionsForChart();
 
-      while (cursor <= lastMonthStart) {
-        const monthTransactions = transactions.filter(t => {
-          const [year, month] = t.transaction_date.split('-');
-          const transactionYear = Number(year);
-          const transactionMonth = Number(month);
-          
-          return transactionYear === cursor.getFullYear() && 
-                 transactionMonth === (cursor.getMonth() + 1);
-        });
-
-        const income = monthTransactions
-          .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+      if (allTransactionsForChart.length > 0) {
+        // Encontrar primeira e última data no histórico completo
+        const firstTransaction = allTransactionsForChart[0];
+        const lastTransaction = allTransactionsForChart[allTransactionsForChart.length - 1];
         
-        const expense = monthTransactions
-          .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+        const [firstYear, firstMonth] = firstTransaction.transaction_date.split('-');
+        const [lastYear, lastMonth] = lastTransaction.transaction_date.split('-');
+        
+        const chartStartDate = new Date(Number(firstYear), Number(firstMonth) - 1, 1);
+        const chartEndDate = new Date(Number(lastYear), Number(lastMonth) - 1, 1);
+        
+        // Construir dados do gráfico com TODO o período
+        const months = [];
+        let cursor = new Date(chartStartDate.getFullYear(), chartStartDate.getMonth(), 1);
 
-        months.push({
-          month: cursor.toLocaleDateString('pt-BR', { month: 'short' }),
-          receitas: income,
-          despesas: expense,
-        });
+        while (cursor <= chartEndDate) {
+          const monthTransactions = allTransactionsForChart.filter(t => {
+            const [year, month] = t.transaction_date.split('-');
+            const transactionYear = Number(year);
+            const transactionMonth = Number(month);
+            
+            return transactionYear === cursor.getFullYear() && 
+                   transactionMonth === (cursor.getMonth() + 1);
+          });
 
-        // Avançar para o próximo mês
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+          const income = monthTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+          
+          const expense = monthTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+
+          months.push({
+            month: cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+            receitas: income,
+            despesas: expense,
+          });
+
+          cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        }
+
+        setChartData(months);
       }
-
-      setChartData(months);
     } catch (error: any) {
       console.error("Error loading dashboard data:", error);
       toast.error("Erro ao carregar dados do dashboard");

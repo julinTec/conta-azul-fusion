@@ -67,7 +67,7 @@ export const DashboardStats = ({
               )}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">vs mês anterior</p>
+          <p className="text-xs text-muted-foreground mt-1">vs período anterior</p>
         </CardContent>
       </Card>
 
@@ -96,7 +96,7 @@ export const DashboardStats = ({
               )}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">vs mês anterior</p>
+          <p className="text-xs text-muted-foreground mt-1">vs período anterior</p>
         </CardContent>
       </Card>
 
@@ -123,7 +123,7 @@ export const DashboardStats = ({
                 <span className="text-red-600">{balanceChangePercent}%</span>
               </>
             )}
-            <span className="text-muted-foreground ml-1">vs mês anterior</span>
+            <span className="text-muted-foreground ml-1">vs período anterior</span>
           </div>
         </CardContent>
       </Card>
