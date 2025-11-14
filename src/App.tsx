@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Dashboard } from "./pages/Dashboard";
 import { Transactions } from "./pages/Transactions";
+import { Pending } from "./pages/Pending";
 import UserManagement from "./pages/UserManagement";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -30,12 +31,14 @@ const App = () => (
           {/* Rotas dinâmicas por escola */}
           <Route path="/school/:schoolSlug/dashboard" element={<SchoolRoute><Dashboard /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/transactions" element={<SchoolRoute><Transactions /></SchoolRoute>} />
+          <Route path="/school/:schoolSlug/pending" element={<SchoolRoute><Pending /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/users" element={<AdminGuard><SchoolRoute><UserManagement /></SchoolRoute></AdminGuard>} />
           <Route path="/school/:schoolSlug/admin/integrations" element={<AdminGuard><SchoolRoute><AdminPanel /></SchoolRoute></AdminGuard>} />
           
           {/* Rotas legadas - redirecionar para seleção de escola */}
           <Route path="/dashboard" element={<Navigate to="/schools" replace />} />
           <Route path="/transactions" element={<Navigate to="/schools" replace />} />
+          <Route path="/pending" element={<Navigate to="/schools" replace />} />
           <Route path="/users" element={<Navigate to="/schools" replace />} />
           <Route path="/admin/integrations" element={<Navigate to="/schools" replace />} />
           

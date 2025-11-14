@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, List, Users, School } from "lucide-react";
+import { LogOut, LayoutDashboard, List, Users, School, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useSchool } from "@/contexts/SchoolContext";
@@ -114,6 +114,15 @@ export const Layout = ({ children }: LayoutProps) => {
                 >
                   <List className="h-4 w-4 mr-2" />
                   Lançamentos
+                </Button>
+              </Link>
+              <Link to={`/school/${schoolSlug}/pending`}>
+                <Button 
+                  variant={location.pathname.includes("/pending") ? "default" : "ghost"} 
+                  size="sm"
+                >
+                  <Clock className="h-4 w-4 mr-2" />
+                  Pendências
                 </Button>
               </Link>
               {isAdmin && (

@@ -193,12 +193,12 @@ serve(async (req) => {
       fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', params),
     ]);
 
-    // Filtrar apenas itens com status "RECEBIDO"
+    // Filtrar itens com status "RECEBIDO" ou "PENDENTE"
     const filteredReceberItems = receberItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO'
+      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'PENDENTE'
     );
     const filteredPagarItems = pagarItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO'
+      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'PENDENTE'
     );
 
     // Mapear para o formato da tabela
@@ -206,7 +206,7 @@ serve(async (req) => {
       ...filteredReceberItems.map((item: any) => ({
         external_id: `receber_${item.id}`,
         type: 'income',
-        amount: item.pago ?? 0,
+        amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.valor ?? 0),
         description: item.descricao || 'Conta a Receber',
         transaction_date: item.data_vencimento,
         status: item.status_traduzido,
@@ -219,7 +219,7 @@ serve(async (req) => {
       ...filteredPagarItems.map((item: any) => ({
         external_id: `pagar_${item.id}`,
         type: 'expense',
-        amount: item.pago ?? 0,
+        amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.valor ?? 0),
         description: item.descricao || 'Conta a Pagar',
         transaction_date: item.data_vencimento,
         status: item.status_traduzido,
