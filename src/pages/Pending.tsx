@@ -76,6 +76,8 @@ export const Pending = () => {
   const [endDate, setEndDate] = useState(
     format(endOfMonth(now), 'yyyy-MM-dd')
   );
+  
+  const currentMonthName = format(now, 'MMMM/yyyy', { locale: ptBR });
 
   useEffect(() => {
     if (!school?.id) {
@@ -98,7 +100,7 @@ export const Pending = () => {
         .from('synced_transactions')
         .select('*')
         .eq('school_id', school.id)
-        .eq('status', 'PENDENTE')
+        .in('status', ['ATRASADO', 'EM_ABERTO'])
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
         .order('transaction_date', { ascending: true });
