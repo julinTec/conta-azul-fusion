@@ -177,6 +177,11 @@ serve(async (req) => {
 
         allItems.push(...items);
         page++;
+        
+        // Delay para respeitar rate limiting da API
+        if (items.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
 
       return allItems;
