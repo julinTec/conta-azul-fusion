@@ -249,12 +249,12 @@ serve(async (req) => {
     console.log('==========================================\n');
     // ===== FIM DO LOGGING TEMPORÁRIO =====
 
-    // Filtrar itens com status "RECEBIDO" ou "PENDENTE"
+    // Filtrar itens com status relevantes
     const filteredReceberItems = receberItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'PENDENTE'
+      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'ATRASADO' || item.status_traduzido === 'EM_ABERTO'
     );
     const filteredPagarItems = pagarItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'PENDENTE'
+      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'ATRASADO' || item.status_traduzido === 'EM_ABERTO'
     );
 
     // Mapear para o formato da tabela
