@@ -185,6 +185,62 @@ serve(async (req) => {
       fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', accessToken, params),
     ]);
 
+    // ===== LOGGING TEMPORÁRIO - DESCOBRIR STATUS DA API =====
+    console.log('\n========== API RAW DATA ANALYSIS (DAILY JOB) ==========');
+    console.log(`📊 Total items from API BEFORE filter:`);
+    console.log(`   - Contas a Receber: ${receberItems.length}`);
+    console.log(`   - Contas a Pagar: ${pagarItems.length}`);
+    
+    // Analisar status únicos em contas a receber
+    const receberStatusMap = new Map<string, any[]>();
+    receberItems.forEach((item: any) => {
+      const status = item.status_traduzido || 'SEM_STATUS';
+      if (!receberStatusMap.has(status)) {
+        receberStatusMap.set(status, []);
+      }
+      receberStatusMap.get(status)!.push(item);
+    });
+    
+    console.log('\n📈 CONTAS A RECEBER - Status encontrados:');
+    for (const [status, items] of receberStatusMap.entries()) {
+      console.log(`   ✓ ${status}: ${items.length} registros`);
+      // Mostrar um exemplo de cada status
+      const example = items[0];
+      console.log(`     Exemplo: "${example.descricao}" - R$ ${example.valor} - Venc: ${example.data_vencimento}`);
+    }
+    
+    // Analisar status únicos em contas a pagar
+    const pagarStatusMap = new Map<string, any[]>();
+    pagarItems.forEach((item: any) => {
+      const status = item.status_traduzido || 'SEM_STATUS';
+      if (!pagarStatusMap.has(status)) {
+        pagarStatusMap.set(status, []);
+      }
+      pagarStatusMap.get(status)!.push(item);
+    });
+    
+    console.log('\n💸 CONTAS A PAGAR - Status encontrados:');
+    for (const [status, items] of pagarStatusMap.entries()) {
+      console.log(`   ✓ ${status}: ${items.length} registros`);
+      // Mostrar um exemplo de cada status
+      const example = items[0];
+      console.log(`     Exemplo: "${example.descricao}" - R$ ${example.valor} - Venc: ${example.data_vencimento}`);
+    }
+    
+    console.log('\n🔍 Procurando especificamente "Conta de Luz" (R$ 781,47)...');
+    const contaLuz = pagarItems.find((item: any) => 
+      item.descricao?.includes('Conta de Luz') && Math.abs(item.valor - 781.47) < 0.01
+    );
+    if (contaLuz) {
+      console.log('   ✅ ENCONTRADO!');
+      console.log(`   Status: ${contaLuz.status_traduzido}`);
+      console.log(`   Dados completos:`, JSON.stringify(contaLuz, null, 2));
+    } else {
+      console.log('   ❌ NÃO ENCONTRADO nos dados da API');
+    }
+    console.log('========================================================\n');
+    // ===== FIM DO LOGGING TEMPORÁRIO =====
+
     // Filtrar itens com status "RECEBIDO" ou "PENDENTE"
     const filteredReceberItems = receberItems.filter((item: any) => 
       item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'PENDENTE'
