@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -47,6 +48,7 @@ export const Transactions = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState(start);
   const [endDate, setEndDate] = useState(end);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
 
   useEffect(() => {
     if (!schoolLoading && !school) {
@@ -62,7 +64,7 @@ export const Transactions = () => {
 
   useEffect(() => {
     filterTransactions();
-  }, [searchTerm, startDate, endDate, transactions]);
+  }, [searchTerm, startDate, endDate, transactions, typeFilter]);
 
   const fetchAllTransactions = async () => {
     if (!school?.id) return [];
@@ -135,6 +137,11 @@ export const Transactions = () => {
   const filterTransactions = () => {
     let filtered = [...transactions];
 
+    // Filter by type
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(t => t.type === typeFilter);
+    }
+
     // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(t => 
@@ -162,6 +169,7 @@ export const Transactions = () => {
     const { start, end } = getPreviousMonthDates();
     setStartDate(start);
     setEndDate(end);
+    setTypeFilter('all');
   };
 
   const getFormattedMonth = (dateString: string) => {
@@ -319,6 +327,27 @@ export const Transactions = () => {
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex items-center gap-4 bg-card p-4 rounded-lg border">
+        <span className="text-sm font-medium">Exibir:</span>
+        <ToggleGroup 
+          type="single" 
+          value={typeFilter} 
+          onValueChange={(value) => value && setTypeFilter(value as 'all' | 'income' | 'expense')}
+        >
+          <ToggleGroupItem value="all" aria-label="Todas">
+            Todas
+          </ToggleGroupItem>
+          <ToggleGroupItem value="income" aria-label="Receitas" className="gap-2">
+            <ArrowUpCircle className="h-4 w-4 text-green-500" />
+            Receitas
+          </ToggleGroupItem>
+          <ToggleGroupItem value="expense" aria-label="Despesas" className="gap-2">
+            <ArrowDownCircle className="h-4 w-4 text-red-500" />
+            Despesas
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
 
       <Card>
         <CardHeader>
