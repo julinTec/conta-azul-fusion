@@ -171,9 +171,6 @@ export const Pending = () => {
           <h1 className="text-3xl font-bold">
             Pendências - {currentMonthName}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Período: {format(new Date(startDate), 'dd/MM/yyyy')} a {format(new Date(endDate), 'dd/MM/yyyy')}
-          </p>
         </div>
         <p className="text-xs text-muted-foreground italic">
           *Valores pendentes de recebimento/pagamento
