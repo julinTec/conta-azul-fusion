@@ -77,7 +77,7 @@ export const Pending = () => {
     format(endOfMonth(now), 'yyyy-MM-dd')
   );
   
-  const currentMonthName = format(now, 'MMMM/yyyy', { locale: ptBR });
+  const currentMonthName = format(now, "MMMM 'de' yyyy", { locale: ptBR });
 
   useEffect(() => {
     if (!school?.id) {
@@ -169,7 +169,7 @@ export const Pending = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold">
-            Pendências - {format(new Date(startDate), "MMMM 'de' yyyy", { locale: ptBR })}
+            Pendências - {currentMonthName}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Período: {format(new Date(startDate), 'dd/MM/yyyy')} a {format(new Date(endDate), 'dd/MM/yyyy')}
