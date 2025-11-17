@@ -88,21 +88,21 @@ const SchoolSelection = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
-      <h1 className="text-4xl font-bold text-foreground mb-12 text-center">
+      <h1 className="text-3xl font-bold text-foreground mb-8 text-center">
         Selecione a escola para visualizar
       </h1>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 w-full max-w-7xl">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
         {schools.map((school) => (
           <button
             key={school.id}
             onClick={() => handleSchoolClick(school.slug)}
-            className="transition-all duration-300 hover:scale-105 hover:shadow-2xl rounded-lg overflow-hidden bg-card border-2 border-border hover:border-primary p-6 flex flex-col items-center justify-center min-h-[200px]"
+            className="transition-all duration-300 hover:scale-105 hover:shadow-2xl rounded-lg overflow-hidden bg-card border-2 border-border hover:border-primary p-4 flex flex-col items-center justify-center min-h-[160px]"
           >
             <img 
               src={getSchoolLogo(school.slug)} 
               alt={school.name} 
-              className="w-full h-auto max-w-[250px] object-contain"
+              className="w-full h-auto max-w-[160px] object-contain"
             />
             <p className="mt-4 text-sm font-medium text-foreground text-center">
               {school.name}
