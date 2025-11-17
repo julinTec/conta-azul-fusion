@@ -12,10 +12,29 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleCallback = async () => {
       const code = searchParams.get("code");
+      const state = searchParams.get("state");
 
       if (!code) {
         toast.error("Código de autorização não encontrado");
-        navigate("/");
+        navigate("/schools");
+        return;
+      }
+
+      // Extrair school_id do state
+      let schoolId = null;
+      let schoolSlug = null;
+      if (state) {
+        try {
+          const stateData = JSON.parse(atob(state));
+          schoolId = stateData.schoolId;
+        } catch (e) {
+          console.error("Error parsing state:", e);
+        }
+      }
+
+      if (!schoolId) {
+        toast.error("Escola não identificada no processo de autenticação");
+        navigate("/schools");
         return;
       }
 
@@ -45,13 +64,24 @@ export default function AuthCallback() {
 
         if (!roles) {
           toast.error("Apenas administradores podem conectar ao Conta Azul");
-          navigate("/dashboard");
+          navigate("/schools");
           return;
+        }
+
+        // Buscar slug da escola para o redirect final
+        const { data: schoolData } = await supabase
+          .from('schools')
+          .select('slug')
+          .eq('id', schoolId)
+          .single();
+        
+        if (schoolData) {
+          schoolSlug = schoolData.slug;
         }
 
         setStatus("Salvando tokens...");
 
-        // Salvar tokens diretamente na tabela via edge function
+        // Salvar tokens COM school_id
         const { error: saveError } = await supabase.functions.invoke(
           'save-conta-azul-tokens',
           {
@@ -59,6 +89,7 @@ export default function AuthCallback() {
               access_token: tokenData.access_token,
               refresh_token: tokenData.refresh_token,
               expires_in: tokenData.expires_in,
+              school_id: schoolId,
             }
           }
         );
@@ -67,11 +98,17 @@ export default function AuthCallback() {
 
         toast.success("Conectado ao Conta Azul com sucesso!");
         toast.info("Clique em 'Sincronizar Dados' para atualizar as transações");
-        navigate("/dashboard");
+        
+        // Redirecionar para o dashboard da escola correta
+        if (schoolSlug) {
+          navigate(`/school/${schoolSlug}/dashboard`);
+        } else {
+          navigate("/schools");
+        }
       } catch (error: any) {
         console.error("Error during authentication:", error);
         toast.error(error.message || "Erro ao conectar com Conta Azul");
-        navigate("/dashboard");
+        navigate("/schools");
       }
     };
 
