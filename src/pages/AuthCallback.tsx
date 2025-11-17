@@ -22,19 +22,23 @@ export default function AuthCallback() {
 
       // Extrair school_id do state
       let schoolId = null;
-      let schoolSlug = null;
       if (state) {
         try {
           const stateData = JSON.parse(atob(state));
           schoolId = stateData.schoolId;
+          console.log(`[AuthCallback] Received OAuth callback for school: ${schoolId}`);
         } catch (e) {
-          console.error("Error parsing state:", e);
+          console.error("[AuthCallback] Error parsing state:", e);
+          toast.error("Erro ao processar autenticação: state inválido");
+          setStatus("Erro ao processar autenticação");
+          return;
         }
       }
 
       if (!schoolId) {
-        toast.error("Escola não identificada no processo de autenticação");
-        navigate("/schools");
+        console.error("[AuthCallback] Missing schoolId in state");
+        toast.error("Erro: escola não identificada no callback");
+        setStatus("Erro: escola não identificada");
         return;
       }
 
@@ -43,10 +47,7 @@ export default function AuthCallback() {
         const redirectUri = `${window.location.origin}/auth/callback`;
         
         const { data: tokenData, error } = await supabase.functions.invoke("conta-azul-auth", {
-          body: {
-            code,
-            redirectUri,
-          },
+          body: { code, redirectUri },
         });
 
         if (error) throw error;
@@ -68,43 +69,41 @@ export default function AuthCallback() {
           return;
         }
 
-        // Buscar slug da escola para o redirect final
-        const { data: schoolData } = await supabase
+        setStatus("Salvando tokens...");
+
+        console.log(`[AuthCallback] Saving tokens for school: ${schoolId}`);
+        const { error: saveError } = await supabase.functions.invoke('save-conta-azul-tokens', {
+          body: {
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in,
+            school_id: schoolId,
+          }
+        });
+
+        if (saveError) {
+          console.error("[AuthCallback] Error saving tokens:", saveError);
+          throw saveError;
+        }
+
+        console.log(`[AuthCallback] Tokens saved successfully`);
+
+        const { data: finalSchoolData, error: schoolError } = await supabase
           .from('schools')
-          .select('slug')
+          .select('slug, name')
           .eq('id', schoolId)
           .single();
         
-        if (schoolData) {
-          schoolSlug = schoolData.slug;
+        if (schoolError || !finalSchoolData) {
+          console.error("[AuthCallback] Error fetching school:", schoolError);
+          toast.error("Erro ao buscar dados da escola");
+          return;
         }
 
-        setStatus("Salvando tokens...");
-
-        // Salvar tokens COM school_id
-        const { error: saveError } = await supabase.functions.invoke(
-          'save-conta-azul-tokens',
-          {
-            body: {
-              access_token: tokenData.access_token,
-              refresh_token: tokenData.refresh_token,
-              expires_in: tokenData.expires_in,
-              school_id: schoolId,
-            }
-          }
-        );
-
-        if (saveError) throw saveError;
-
-        toast.success("Conectado ao Conta Azul com sucesso!");
-        toast.info("Clique em 'Sincronizar Dados' para atualizar as transações");
-        
-        // Redirecionar para o dashboard da escola correta
-        if (schoolSlug) {
-          navigate(`/school/${schoolSlug}/dashboard`);
-        } else {
-          navigate("/schools");
-        }
+        console.log(`[AuthCallback] Redirecting to: ${finalSchoolData.name}`);
+        toast.success(`Conta Azul conectado para ${finalSchoolData.name}!`);
+        toast.info("Clique em 'Sincronizar Dados' para atualizar");
+        navigate(`/school/${finalSchoolData.slug}/dashboard`);
       } catch (error: any) {
         console.error("Error during authentication:", error);
         toast.error(error.message || "Erro ao conectar com Conta Azul");

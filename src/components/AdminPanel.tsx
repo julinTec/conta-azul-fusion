@@ -26,7 +26,7 @@ export const AdminPanel = () => {
 
   useEffect(() => {
     verifyAdminAccess();
-  }, []);
+  }, [school?.id]); // React to school changes
 
   const verifyAdminAccess = async () => {
     try {
@@ -318,13 +318,17 @@ export const AdminPanel = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         {!hasConnection ? (
-          <div>
+          <div className="space-y-2">
             <p className="text-sm text-muted-foreground mb-4">
               Conecte sua conta do Conta Azul para começar a sincronizar os dados financeiros.
             </p>
             <Button onClick={handleConnect} size="lg" className="w-full">
               <LogIn className="mr-2 h-5 w-5" />
               Conectar com Conta Azul
+            </Button>
+            <Button onClick={handleReconnect} variant="outline" size="sm" className="w-full">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Forçar Nova Autenticação
             </Button>
           </div>
         ) : (
