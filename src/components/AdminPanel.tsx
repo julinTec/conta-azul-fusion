@@ -65,10 +65,15 @@ export const AdminPanel = () => {
   };
 
   const checkConnection = async () => {
+    if (!school?.id) {
+      setHasConnection(false);
+      return;
+    }
+
     const { data } = await supabase
       .from('conta_azul_config')
       .select('access_token, refresh_token')
-      .limit(1)
+      .eq('school_id', school.id)
       .maybeSingle();
     
     // Considera conectado apenas se ambos os tokens existirem
@@ -123,11 +128,23 @@ export const AdminPanel = () => {
   };
 
   const handleConnect = () => {
+    if (!school?.id) {
+      toast.error("Escola não identificada");
+      return;
+    }
+
     const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", CLIENT_ID);
     authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
-    authUrl.searchParams.append("state", crypto.randomUUID());
+    
+    // Incluir school_id no state
+    const stateData = {
+      uuid: crypto.randomUUID(),
+      schoolId: school.id
+    };
+    authUrl.searchParams.append("state", btoa(JSON.stringify(stateData)));
+    
     authUrl.searchParams.append("scope", "openid profile aws.cognito.signin.user.admin");
     authUrl.searchParams.append("prompt", "login");
     authUrl.searchParams.append("max_age", "0");
@@ -150,6 +167,11 @@ export const AdminPanel = () => {
   };
 
   const handleReconnect = () => {
+    if (!school?.id) {
+      toast.error("Escola não identificada");
+      return;
+    }
+
     // Limpa os tokens antes de redirecionar
     localStorage.removeItem("conta_azul_access_token");
     localStorage.removeItem("conta_azul_refresh_token");
@@ -159,7 +181,14 @@ export const AdminPanel = () => {
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", CLIENT_ID);
     authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
-    authUrl.searchParams.append("state", crypto.randomUUID());
+    
+    // Incluir school_id no state
+    const stateData = {
+      uuid: crypto.randomUUID(),
+      schoolId: school.id
+    };
+    authUrl.searchParams.append("state", btoa(JSON.stringify(stateData)));
+    
     authUrl.searchParams.append("scope", "openid profile aws.cognito.signin.user.admin");
     authUrl.searchParams.append("prompt", "login");
     authUrl.searchParams.append("max_age", "0");
@@ -183,21 +212,26 @@ export const AdminPanel = () => {
 
   const handleDisconnect = async () => {
     try {
+      if (!school?.id) {
+        toast.error("Escola não identificada");
+        return;
+      }
+
       // Limpar localStorage
       localStorage.removeItem("conta_azul_access_token");
       localStorage.removeItem("conta_azul_refresh_token");
       localStorage.removeItem("conta_azul_token_expires_at");
 
-      // Remover configuração do banco
+      // Remover apenas a configuração DESTA ESCOLA
       const { error } = await supabase
         .from('conta_azul_config')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // deleta todos os registros
+        .eq('school_id', school.id);
 
       if (error) throw error;
 
       setHasConnection(false);
-      toast.success('Conexão removida. Os tokens foram permanentemente apagados do Vault.');
+      toast.success('Conexão removida para esta escola.');
       toast.info('Reconecte para gerar novos tokens seguros.');
     } catch (error: any) {
       console.error('Error disconnecting:', error);

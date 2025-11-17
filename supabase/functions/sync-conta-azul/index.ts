@@ -57,13 +57,12 @@ serve(async (req) => {
 
     console.log('Syncing for school_id:', targetSchoolId);
 
-    // Buscar configuração do Conta Azul
+    // Buscar configuração do Conta Azul DESTA ESCOLA
     const { data: config, error: configError } = await supabaseClient
       .from('conta_azul_config')
       .select('id, access_token, refresh_token, expires_at, updated_by')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .eq('school_id', targetSchoolId)
+      .maybeSingle();
 
     if (configError || !config) {
       throw new Error('Configuração do Conta Azul não encontrada');

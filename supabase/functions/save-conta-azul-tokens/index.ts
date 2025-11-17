@@ -35,19 +35,23 @@ serve(async (req) => {
       throw new Error('Apenas administradores podem salvar tokens');
     }
 
-    const { access_token, refresh_token, expires_in } = await req.json();
+    const { access_token, refresh_token, expires_in, school_id } = await req.json();
 
     if (!access_token || !refresh_token) {
       throw new Error('Tokens ausentes');
     }
 
-    console.log('Saving tokens to conta_azul_config for user:', user.id);
+    if (!school_id) {
+      throw new Error('school_id é obrigatório');
+    }
 
-    // Verificar se já existe uma configuração
+    console.log('Saving tokens to conta_azul_config for user:', user.id, 'school_id:', school_id);
+
+    // Verificar se já existe uma configuração PARA ESTA ESCOLA
     const { data: existingConfig } = await supabaseClient
       .from('conta_azul_config')
       .select('id')
-      .limit(1)
+      .eq('school_id', school_id)
       .maybeSingle();
 
     if (existingConfig) {
@@ -69,6 +73,7 @@ serve(async (req) => {
       const { error: insertError } = await supabaseClient
         .from('conta_azul_config')
         .insert({
+          school_id: school_id,
           access_token: access_token,
           refresh_token: refresh_token,
           expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
