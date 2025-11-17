@@ -3,6 +3,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import colegioLogo from "@/assets/colegio-paulo-freire.png";
 import aventurandoLogo from "@/assets/colegio-aventurando.png";
+import renascerLogo from "@/assets/colegio-renascer.png";
+import conectivoLogo from "@/assets/colegio-conectivo.png";
+import exodusLogo from "@/assets/colegio-exodus.png";
+import cristaGomesLogo from "@/assets/colegio-crista-gomes.png";
+import redeBloomLogo from "@/assets/rede-bloom.png";
 import { Loader2 } from "lucide-react";
 
 interface School {
@@ -61,6 +66,11 @@ const SchoolSelection = () => {
   const getSchoolLogo = (slug: string) => {
     if (slug === 'paulo-freire') return colegioLogo;
     if (slug === 'aventurando') return aventurandoLogo;
+    if (slug === 'renascer') return renascerLogo;
+    if (slug === 'conectivo') return conectivoLogo;
+    if (slug === 'exodus') return exodusLogo;
+    if (slug === 'crista-gomes') return cristaGomesLogo;
+    if (slug === 'rede-bloom') return redeBloomLogo;
     return colegioLogo;
   };
 
