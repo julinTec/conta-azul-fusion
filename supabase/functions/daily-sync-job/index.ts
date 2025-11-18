@@ -17,7 +17,7 @@ type ContaAzulConfig = {
   schools: {
     slug: string;
     name: string;
-  };
+  } | null;
 };
 
 async function fetchAllPages(endpoint: string, accessToken: string, params: Record<string, string>) {
@@ -83,10 +83,24 @@ serve(async (req) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole);
 
-    const { data: configs, error: configError } = await supabase
-      .from("conta_azul_config")
-      .select("id, school_id, access_token, refresh_token, expires_at, schools(slug, name)")
-      .not("school_id", "is", null);
+  const { data: rawConfigs, error: configError } = await supabase
+    .from("conta_azul_config")
+    .select("id, school_id, access_token, refresh_token, expires_at, schools(slug, name)")
+    .not("school_id", "is", null);
+
+  if (configError) {
+    console.error("Error fetching configs:", configError);
+    return new Response(JSON.stringify({ success: false, error: configError.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Flatten the schools array to single object
+  const configs: ContaAzulConfig[] = (rawConfigs || []).map((config: any) => ({
+    ...config,
+    schools: Array.isArray(config.schools) ? config.schools[0] : config.schools,
+  }));
 
     if (configError) throw configError;
     if (!configs || configs.length === 0) {
@@ -99,8 +113,11 @@ serve(async (req) => {
 
     for (const config of configs) {
       try {
+        const schoolName = config.schools?.name || 'Unknown';
+        const schoolSlug = config.schools?.slug || 'unknown';
+        
         console.log(`\n========================================`);
-        console.log(`Sincronizando: ${config.schools.name} (${config.schools.slug})`);
+        console.log(`Sincronizando: ${schoolName} (${schoolSlug})`);
         console.log(`========================================\n`);
 
         let accessToken = config.access_token;
@@ -108,16 +125,16 @@ serve(async (req) => {
         const expiresAt = new Date(config.expires_at).getTime();
         const buffer = 5 * 60 * 1000;
 
-        if (!expiresAt || expiresAt <= now + buffer) {
-          console.log(`[${config.schools.slug}] Refreshing token...`);
+      if (!expiresAt || expiresAt <= now + buffer) {
+        console.log(`[${schoolSlug}] Refreshing token...`);
           const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
             body: { refreshToken: config.refresh_token },
           });
 
-          if (refreshRes.error) {
-            console.error(`[${config.schools.slug}] Token refresh failed`);
-            syncResults.push({ school: config.schools.name, slug: config.schools.slug, success: false, error: "Token refresh failed" });
-            continue;
+        if (refreshRes.error) {
+          console.error(`[${schoolSlug}] Token refresh failed`);
+          syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "Token refresh failed" });
+          continue;
           }
 
           const tokenData = refreshRes.data;
@@ -130,7 +147,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", config.id);
           
-          console.log(`[${config.schools.slug}] Token refreshed`);
+          console.log(`[${schoolSlug}] Token refreshed`);
         }
 
         const endDate = new Date().toISOString().split("T")[0];
@@ -167,15 +184,18 @@ serve(async (req) => {
         await supabase.from("synced_transactions").delete().eq("school_id", config.school_id);
         if (allRows.length > 0) await chunkedUpsert(supabase, allRows, 500);
 
-        console.log(`[${config.schools.slug}] ✅ Synced ${allRows.length} transactions`);
+        console.log(`[${schoolSlug}] ✅ Synced ${allRows.length} transactions`);
         syncResults.push({
-          school: config.schools.name, slug: config.schools.slug, success: true,
+          school: schoolName, slug: schoolSlug, success: true,
           receivablesCount: incomeRows.length, payablesCount: expenseRows.length, totalTransactions: allRows.length,
         });
       } catch (schoolError: any) {
-        console.error(`[${config.schools?.slug}] ❌ Failed:`, schoolError);
+        const schoolName = config.schools?.name || 'Unknown';
+        const schoolSlug = config.schools?.slug || 'unknown';
+        
+        console.error(`[${schoolSlug}] ❌ Failed:`, schoolError);
         syncResults.push({
-          school: config.schools?.name || 'Unknown', slug: config.schools?.slug || 'unknown',
+          school: schoolName, slug: schoolSlug,
           success: false, error: schoolError.message,
         });
       }
