@@ -83,26 +83,25 @@ serve(async (req) => {
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRole);
 
-  const { data: rawConfigs, error: configError } = await supabase
-    .from("conta_azul_config")
-    .select("id, school_id, access_token, refresh_token, expires_at, schools(slug, name)")
-    .not("school_id", "is", null);
+    const { data: rawConfigs, error: configError } = await supabase
+      .from("conta_azul_config")
+      .select("id, school_id, access_token, refresh_token, expires_at, schools(slug, name)")
+      .not("school_id", "is", null);
 
-  if (configError) {
-    console.error("Error fetching configs:", configError);
-    return new Response(JSON.stringify({ success: false, error: configError.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+    if (configError) {
+      console.error("Error fetching configs:", configError);
+      return new Response(JSON.stringify({ success: false, error: configError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-  // Flatten the schools array to single object
-  const configs: ContaAzulConfig[] = (rawConfigs || []).map((config: any) => ({
-    ...config,
-    schools: Array.isArray(config.schools) ? config.schools[0] : config.schools,
-  }));
+    // Flatten the schools array to single object
+    const configs: ContaAzulConfig[] = (rawConfigs || []).map((config: any) => ({
+      ...config,
+      schools: Array.isArray(config.schools) ? config.schools[0] : config.schools,
+    }));
 
-    if (configError) throw configError;
     if (!configs || configs.length === 0) {
       return new Response(JSON.stringify({ success: true, message: "Nenhuma escola configurada", schoolsProcessed: 0 }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -112,10 +111,10 @@ serve(async (req) => {
     const syncResults: any[] = [];
 
     for (const config of configs) {
+      const schoolName = config.schools?.name || 'Unknown';
+      const schoolSlug = config.schools?.slug || 'unknown';
+      
       try {
-        const schoolName = config.schools?.name || 'Unknown';
-        const schoolSlug = config.schools?.slug || 'unknown';
-        
         console.log(`\n========================================`);
         console.log(`Sincronizando: ${schoolName} (${schoolSlug})`);
         console.log(`========================================\n`);
@@ -125,16 +124,16 @@ serve(async (req) => {
         const expiresAt = new Date(config.expires_at).getTime();
         const buffer = 5 * 60 * 1000;
 
-      if (!expiresAt || expiresAt <= now + buffer) {
-        console.log(`[${schoolSlug}] Refreshing token...`);
+        if (!expiresAt || expiresAt <= now + buffer) {
+          console.log(`[${schoolSlug}] Refreshing token...`);
           const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
             body: { refreshToken: config.refresh_token },
           });
 
-        if (refreshRes.error) {
-          console.error(`[${schoolSlug}] Token refresh failed`);
-          syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "Token refresh failed" });
-          continue;
+          if (refreshRes.error) {
+            console.error(`[${schoolSlug}] Token refresh failed`);
+            syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "Token refresh failed" });
+            continue;
           }
 
           const tokenData = refreshRes.data;
@@ -190,9 +189,6 @@ serve(async (req) => {
           receivablesCount: incomeRows.length, payablesCount: expenseRows.length, totalTransactions: allRows.length,
         });
       } catch (schoolError: any) {
-        const schoolName = config.schools?.name || 'Unknown';
-        const schoolSlug = config.schools?.slug || 'unknown';
-        
         console.error(`[${schoolSlug}] ❌ Failed:`, schoolError);
         syncResults.push({
           school: schoolName, slug: schoolSlug,
