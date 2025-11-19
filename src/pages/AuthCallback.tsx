@@ -46,8 +46,27 @@ export default function AuthCallback() {
         setStatus("Obtendo token de acesso...");
         const redirectUri = `${window.location.origin}/auth/callback`;
         
+        // Buscar credenciais OAuth da escola
+        const { data: oauthCreds, error: credsError } = await supabase
+          .from('school_oauth_credentials')
+          .select('client_id, client_secret')
+          .eq('school_id', schoolId)
+          .single();
+
+        if (credsError || !oauthCreds) {
+          console.error("[AuthCallback] Error fetching OAuth credentials:", credsError);
+          toast.error("Credenciais OAuth não configuradas para esta escola");
+          setStatus("Erro: credenciais não encontradas");
+          return;
+        }
+
         const { data: tokenData, error } = await supabase.functions.invoke("conta-azul-auth", {
-          body: { code, redirectUri },
+          body: { 
+            code, 
+            redirectUri,
+            client_id: oauthCreds.client_id,
+            client_secret: oauthCreds.client_secret
+          },
         });
 
         if (error) throw error;

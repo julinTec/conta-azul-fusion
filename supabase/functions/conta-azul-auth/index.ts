@@ -11,10 +11,11 @@ serve(async (req) => {
   }
 
   try {
-    const { code, redirectUri, refreshToken } = await req.json();
+    const { code, redirectUri, refreshToken, client_id, client_secret } = await req.json();
     
-    const clientId = Deno.env.get('CONTA_AZUL_CLIENT_ID');
-    const clientSecret = Deno.env.get('CONTA_AZUL_CLIENT_SECRET');
+    // Priorizar credenciais do body, fallback para env vars (compatibilidade)
+    const clientId = client_id || Deno.env.get('CONTA_AZUL_CLIENT_ID');
+    const clientSecret = client_secret || Deno.env.get('CONTA_AZUL_CLIENT_SECRET');
 
     if (!clientId || !clientSecret) {
       throw new Error('Conta Azul credentials not configured');

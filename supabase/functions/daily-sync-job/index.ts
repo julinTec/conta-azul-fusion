@@ -85,7 +85,10 @@ serve(async (req) => {
 
     const { data: rawConfigs, error: configError } = await supabase
       .from("conta_azul_config")
-      .select("id, school_id, access_token, refresh_token, expires_at, schools(slug, name)")
+      .select(`
+        id, school_id, access_token, refresh_token, expires_at,
+        schools(slug, name)
+      `)
       .not("school_id", "is", null);
 
     if (configError) {
@@ -119,6 +122,19 @@ serve(async (req) => {
         console.log(`Sincronizando: ${schoolName} (${schoolSlug})`);
         console.log(`========================================\n`);
 
+        // Buscar credenciais OAuth da escola
+        const { data: oauthCreds, error: credsError } = await supabase
+          .from('school_oauth_credentials')
+          .select('client_id, client_secret')
+          .eq('school_id', config.school_id)
+          .single();
+
+        if (credsError || !oauthCreds) {
+          console.error(`[${schoolSlug}] OAuth credentials not found`);
+          syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "OAuth credentials not found" });
+          continue;
+        }
+
         let accessToken = config.access_token;
         const now = Date.now();
         const expiresAt = new Date(config.expires_at).getTime();
@@ -127,7 +143,11 @@ serve(async (req) => {
         if (!expiresAt || expiresAt <= now + buffer) {
           console.log(`[${schoolSlug}] Refreshing token...`);
           const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
-            body: { refreshToken: config.refresh_token },
+            body: { 
+              refreshToken: config.refresh_token,
+              client_id: oauthCreds.client_id,
+              client_secret: oauthCreds.client_secret
+            },
           });
 
           if (refreshRes.error) {

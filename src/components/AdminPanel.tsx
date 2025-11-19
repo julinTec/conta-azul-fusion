@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSchool } from "@/contexts/SchoolContext";
 
-const CLIENT_ID = "2imfke8a0e9jc4v9qm01r1m9s1";
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
 export const AdminPanel = () => {
@@ -15,6 +14,10 @@ export const AdminPanel = () => {
   const [clearing, setClearing] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [oauthCredentials, setOauthCredentials] = useState<{
+    client_id: string;
+    client_secret: string;
+  } | null>(null);
   const [syncStats, setSyncStats] = useState<{
     lastSync: string | null;
     minDate: string | null;
@@ -67,16 +70,25 @@ export const AdminPanel = () => {
   const checkConnection = async () => {
     if (!school?.id) {
       setHasConnection(false);
+      setOauthCredentials(null);
       return;
     }
 
+    // Buscar tokens
     const { data } = await supabase
       .from('conta_azul_config')
       .select('access_token, refresh_token')
       .eq('school_id', school.id)
       .maybeSingle();
     
-    // Considera conectado apenas se ambos os tokens existirem
+    // Buscar credenciais OAuth
+    const { data: credsData } = await supabase
+      .from('school_oauth_credentials')
+      .select('client_id, client_secret')
+      .eq('school_id', school.id)
+      .maybeSingle();
+    
+    setOauthCredentials(credsData);
     setHasConnection(!!(data?.access_token && data?.refresh_token));
   };
 
@@ -133,9 +145,14 @@ export const AdminPanel = () => {
       return;
     }
 
+    if (!oauthCredentials) {
+      toast.error("Credenciais OAuth não configuradas para esta escola");
+      return;
+    }
+
     const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
     authUrl.searchParams.append("response_type", "code");
-    authUrl.searchParams.append("client_id", CLIENT_ID);
+    authUrl.searchParams.append("client_id", oauthCredentials.client_id);
     authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
     
     // Incluir school_id no state
@@ -172,6 +189,11 @@ export const AdminPanel = () => {
       return;
     }
 
+    if (!oauthCredentials) {
+      toast.error("Credenciais OAuth não configuradas para esta escola");
+      return;
+    }
+
     // Limpa os tokens antes de redirecionar
     localStorage.removeItem("conta_azul_access_token");
     localStorage.removeItem("conta_azul_refresh_token");
@@ -179,7 +201,7 @@ export const AdminPanel = () => {
 
     const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
     authUrl.searchParams.append("response_type", "code");
-    authUrl.searchParams.append("client_id", CLIENT_ID);
+    authUrl.searchParams.append("client_id", oauthCredentials.client_id);
     authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
     
     // Incluir school_id no state
