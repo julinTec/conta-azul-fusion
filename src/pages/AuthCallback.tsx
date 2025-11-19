@@ -42,6 +42,19 @@ export default function AuthCallback() {
         return;
       }
 
+      // Verificar sessão do usuário
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[AuthCallback] Session check:', { 
+        hasSession: !!session, 
+        userId: session?.user?.id 
+      });
+
+      if (!session) {
+        toast.error("Sessão expirada. Por favor, faça login novamente.");
+        navigate("/auth");
+        return;
+      }
+
       try {
         setStatus("Obtendo token de acesso...");
         const redirectUri = `${window.location.origin}/auth/callback`;
@@ -51,11 +64,24 @@ export default function AuthCallback() {
           .from('school_oauth_credentials')
           .select('client_id, client_secret')
           .eq('school_id', schoolId)
-          .single();
+          .maybeSingle();
 
-        if (credsError || !oauthCreds) {
-          console.error("[AuthCallback] Error fetching OAuth credentials:", credsError);
-          toast.error("Credenciais OAuth não configuradas para esta escola");
+        console.log('[AuthCallback] OAuth credentials query:', { 
+          schoolId, 
+          found: !!oauthCreds, 
+          error: credsError 
+        });
+
+        if (credsError) {
+          console.error("[AuthCallback] Database error fetching credentials:", credsError);
+          toast.error(`Erro ao buscar credenciais: ${credsError.message}`);
+          setStatus(`Erro: ${credsError.message}`);
+          return;
+        }
+
+        if (!oauthCreds) {
+          console.error("[AuthCallback] No credentials found for school:", schoolId);
+          toast.error(`Credenciais OAuth não encontradas para escola ${schoolId}`);
           setStatus("Erro: credenciais não encontradas");
           return;
         }
