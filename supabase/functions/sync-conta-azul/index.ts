@@ -72,6 +72,17 @@ serve(async (req) => {
       throw new Error('Tokens não encontrados. Por favor, reconecte ao Conta Azul.');
     }
 
+    // Buscar credenciais OAuth da escola
+    const { data: oauthCreds, error: credsError } = await supabaseClient
+      .from('school_oauth_credentials')
+      .select('client_id, client_secret')
+      .eq('school_id', targetSchoolId)
+      .single();
+
+    if (credsError || !oauthCreds) {
+      throw new Error('Credenciais OAuth não configuradas para esta escola');
+    }
+
     console.log('Loading tokens from database...');
 
     // Tokens agora vêm diretamente da tabela
@@ -86,31 +97,21 @@ serve(async (req) => {
     if (expiresAt.getTime() <= now.getTime() + bufferTime) {
       console.log('Token expired, refreshing...');
       
-      // Refresh token
-      const clientId = Deno.env.get('CONTA_AZUL_CLIENT_ID');
-      const clientSecret = Deno.env.get('CONTA_AZUL_CLIENT_SECRET');
-
-      const tokenResponse = await fetch('https://auth.contaazul.com/oauth2/token', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
+      // Usar o edge function conta-azul-auth com credenciais da escola
+      const refreshRes = await supabaseClient.functions.invoke("conta-azul-auth", {
+        body: { 
+          refreshToken: config.refresh_token,
+          client_id: oauthCreds.client_id,
+          client_secret: oauthCreds.client_secret
         },
-        body: new URLSearchParams({
-          client_id: clientId!,
-          client_secret: clientSecret!,
-          grant_type: 'refresh_token',
-          refresh_token: refreshToken,
-        }),
       });
 
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        console.error('Token refresh failed:', errorText);
+      if (refreshRes.error) {
+        console.error('Token refresh failed:', refreshRes.error);
         throw new Error('Os tokens expiraram. Por favor, desconecte e reconecte ao Conta Azul no painel administrativo.');
       }
 
-      const tokenData = await tokenResponse.json();
+      const tokenData = refreshRes.data;
       accessToken = tokenData.access_token;
       refreshToken = tokenData.refresh_token;
 
