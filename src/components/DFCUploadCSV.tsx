@@ -36,11 +36,11 @@ export const DFCUploadCSV = () => {
 
       jsonData.forEach((row: any) => {
         // Ajustar conforme estrutura real do CSV
-        // Assumindo que as colunas são nomeadas ou em posições específicas
+        // IMPORTANTE: Colunas I e J foram corrigidas (estavam invertidas)
         const descricao = row['Descrição'] || row['E'] || row[Object.keys(row)[4]];
         const categoria = row['Categoria'] || row['H'] || row[Object.keys(row)[7]];
-        const nivel_1 = row['Nível 1'] || row['I'] || row[Object.keys(row)[8]];
-        const nivel_2 = row['Nível 2'] || row['J'] || row[Object.keys(row)[9]];
+        const nivel_2 = row['Nível 2'] || row['I'] || row[Object.keys(row)[8]]; // Coluna I = Nível 2
+        const nivel_1 = row['Nível 1'] || row['J'] || row[Object.keys(row)[9]]; // Coluna J = Nível 1
 
         if (descricao && nivel_1 && nivel_2) {
           mappings.push({
@@ -86,6 +86,14 @@ export const DFCUploadCSV = () => {
         if (insertError) throw insertError;
         inserted += batch.length;
       }
+
+      // Validação visual e preview
+      const hasOrderNumbers = mappings.some(m => /^\d+/.test(m.nivel_1) && /^\d+/.test(m.nivel_2));
+      if (!hasOrderNumbers) {
+        toast.error('Aviso: Nenhum número de ordenação detectado nos níveis!');
+      }
+      
+      console.log('Preview dos primeiros 3 mapeamentos importados:', mappings.slice(0, 3));
 
       setFileInfo({ name: file.name, rows: inserted });
       toast.success(`${inserted} mapeamentos importados com sucesso!`);
@@ -158,8 +166,8 @@ export const DFCUploadCSV = () => {
             <ul className="list-disc list-inside text-blue-700 dark:text-blue-300 mt-2 space-y-1">
               <li>Coluna E: Descrição (texto exato do lançamento)</li>
               <li>Coluna H: Categoria (opcional)</li>
-              <li>Coluna I: Nível 1 (ex: RECEITAS OPERACIONAIS)</li>
-              <li>Coluna J: Nível 2 (ex: Mensalidades)</li>
+              <li>Coluna I: Nível 2 (ex: 1.1 Receita com Mensalidade)</li>
+              <li>Coluna J: Nível 1 (ex: 1. Receita Bruta)</li>
             </ul>
           </div>
         </div>

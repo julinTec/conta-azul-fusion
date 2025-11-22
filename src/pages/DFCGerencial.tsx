@@ -174,6 +174,23 @@ export const DFCGerencial = () => {
     toast.success('Arquivo exportado com sucesso!');
   };
 
+  const handleExportUnmapped = () => {
+    const exportData = unmappedTransactions.map(trans => ({
+      'Descrição': trans.description,
+      'Valor': trans.amount,
+      'Data': new Date(trans.transaction_date).toLocaleDateString('pt-BR'),
+      'Tipo': trans.type === 'income' ? 'Receita' : 'Despesa',
+      'Status': trans.status,
+      'Entidade': trans.entity_name || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Não Mapeadas');
+    XLSX.writeFile(wb, `transacoes-nao-mapeadas_${school?.slug}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Transações não mapeadas exportadas!');
+  };
+
   const currentMonthName = format(new Date(startDate), "MMMM 'de' yyyy", { locale: ptBR });
 
   if (loading) {
@@ -216,6 +233,12 @@ export const DFCGerencial = () => {
             <FileDown className="h-4 w-4 mr-2" />
             Exportar Excel
           </Button>
+          {unmappedTransactions.length > 0 && (
+            <Button onClick={handleExportUnmapped} variant="outline" size="sm" className="bg-yellow-50 dark:bg-yellow-950 border-yellow-300 dark:border-yellow-700">
+              <FileDown className="h-4 w-4 mr-2" />
+              Exportar Não Mapeadas ({unmappedTransactions.length})
+            </Button>
+          )}
         </div>
       </div>
 

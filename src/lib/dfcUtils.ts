@@ -19,12 +19,10 @@ export function extractOrderNumber(text: string): number {
 export function normalizeDescription(text: string): string {
   return text
     .toLowerCase()
-    .replace(/^["']|["']$/g, '') // Remove aspas no início e fim
-    .replace(/[""'']/g, '') // Remove todas as aspas
+    .replace(/["""'''`âÃ]/g, '') // Remove TODAS aspas e caracteres UTF-8 problemáticos
     .replace(/^\d+\/\d+\s*-\s*/g, '') // Remove prefixo de parcela (1/3 -, 2/5 -, etc)
+    .replace(/[:\-,;()]/g, ' ') // Substitui pontuação por espaço
     .replace(/\s+/g, ' ') // Normaliza espaços
-    .replace(/[:\-,;]/g, ' ') // Substitui pontuação por espaço
-    .replace(/\s+/g, ' ') // Normaliza espaços novamente
     .trim();
 }
 
@@ -103,14 +101,14 @@ export function findBestMatch(
     }
   }
   
-  // Camada 3: Similaridade >= 90%
+  // Camada 3: Similaridade >= 85%
   let bestMatch: { mapping: any; similarity: number } | null = null;
   
   for (const mapping of mappings) {
     const mappingNormalized = normalizeDescription(mapping.descricao);
     const similarity = calculateSimilarity(normalized, mappingNormalized);
     
-    if (similarity >= 0.9) {
+    if (similarity >= 0.85) {
       if (!bestMatch || similarity > bestMatch.similarity) {
         bestMatch = { mapping, similarity };
       }
