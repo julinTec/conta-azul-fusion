@@ -70,7 +70,7 @@ export const DFCLevel2Item = ({ nivel2, total, transactions }: DFCLevel2ItemProp
                 </div>
               </div>
               <div className="text-right ml-4">
-                <p className={`font-semibold ${trans.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                <p className={`font-semibold ${trans.amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {Number(trans.amount).toLocaleString('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
