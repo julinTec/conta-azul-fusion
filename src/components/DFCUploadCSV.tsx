@@ -98,7 +98,7 @@ export const DFCUploadCSV = () => {
       setFileInfo({ name: file.name, rows: inserted });
       toast.success(`${inserted} mapeamentos importados com sucesso!`);
     } catch (error: any) {
-      console.error('Error uploading CSV:', error);
+      console.error('Error uploading Excel:', error);
       toast.error('Erro ao importar arquivo: ' + error.message);
     } finally {
       setUploading(false);
@@ -115,14 +115,14 @@ export const DFCUploadCSV = () => {
           Upload de Mapeamento DFC
         </CardTitle>
         <CardDescription>
-          Faça upload do arquivo CSV/Excel com o mapeamento DE-PARA das descrições
+          Faça upload do arquivo Excel com o mapeamento DE-PARA das descrições
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="border-2 border-dashed border-muted-foreground/20 rounded-lg p-6 text-center">
           <input
             type="file"
-            accept=".csv,.xlsx,.xls"
+            accept=".xlsx,.xls"
             onChange={handleFileUpload}
             disabled={uploading}
             className="hidden"
@@ -136,7 +136,7 @@ export const DFCUploadCSV = () => {
                   {uploading ? 'Processando...' : 'Clique para selecionar arquivo'}
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  CSV ou Excel com colunas: Descrição, Categoria, Nível 1, Nível 2
+                  Arquivo Excel (XLSX/XLS) com as colunas especificadas abaixo
                 </p>
               </div>
             </div>
