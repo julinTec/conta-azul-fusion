@@ -127,10 +127,14 @@ export const DFCGerencial = () => {
           };
         }
 
-        const amount = Number(trans.amount);
-        grouped[trans.nivel_1].total += amount;
-        grouped[trans.nivel_1].level2[trans.nivel_2].total += amount;
-        grouped[trans.nivel_1].level2[trans.nivel_2].transactions.push(trans);
+        // Despesas devem ser negativas no DFC Gerencial
+        const adjustedAmount = trans.type === 'expense' ? -Math.abs(Number(trans.amount)) : Math.abs(Number(trans.amount));
+        grouped[trans.nivel_1].total += adjustedAmount;
+        grouped[trans.nivel_1].level2[trans.nivel_2].total += adjustedAmount;
+        grouped[trans.nivel_1].level2[trans.nivel_2].transactions.push({
+          ...trans,
+          amount: adjustedAmount
+        });
       });
 
       setGroupedData(grouped);
