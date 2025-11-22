@@ -9,6 +9,7 @@ import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { DFCLevel1Item } from "@/components/DFCLevel1Item";
+import { findBestMatch, extractOrderNumber } from "@/lib/dfcUtils";
 
 interface Transaction {
   id: string;
@@ -77,18 +78,26 @@ export const DFCGerencial = () => {
 
       if (mappingError) throw mappingError;
 
-      // Criar mapa de descrição -> mapeamento
-      const mappingMap = new Map(
-        (mappingData || []).map(m => [m.descricao.toLowerCase().trim(), m])
-      );
-
       const mapped: MappedTransaction[] = [];
       const unmapped: Transaction[] = [];
 
+      // Usar fuzzy matching em 3 camadas
       (transData || []).forEach(trans => {
-        const mapping = mappingMap.get(trans.description.toLowerCase().trim());
+        const matchResult = findBestMatch(trans.description, mappingData || []);
         
-        if (mapping) {
+        if (matchResult) {
+          const { mapping, matchType, similarity } = matchResult;
+          
+          // Log de debug para acompanhamento
+          if (matchType !== 'exact') {
+            console.log(`[DFC Match ${matchType}] ${(similarity * 100).toFixed(1)}%`, {
+              transaction: trans.description,
+              mapped: mapping.descricao,
+              nivel_1: mapping.nivel_1,
+              nivel_2: mapping.nivel_2
+            });
+          }
+          
           mapped.push({
             ...trans,
             nivel_1: mapping.nivel_1,
@@ -232,7 +241,11 @@ export const DFCGerencial = () => {
           </Card>
         ) : (
           Object.entries(groupedData)
-            .sort(([a], [b]) => a.localeCompare(b))
+            .sort(([a], [b]) => {
+              const numA = extractOrderNumber(a);
+              const numB = extractOrderNumber(b);
+              return numA - numB;
+            })
             .map(([nivel1, data]) => (
               <DFCLevel1Item
                 key={nivel1}
