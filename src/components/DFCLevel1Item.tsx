@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { DFCLevel2Item } from "./DFCLevel2Item";
+import { extractOrderNumber } from "@/lib/dfcUtils";
 
 interface Level2Group {
   total: number;
@@ -47,7 +48,11 @@ export const DFCLevel1Item = ({ nivel1, total, level2Data }: DFCLevel1ItemProps)
       {isOpen && (
         <div className="px-4 pb-4 space-y-2">
           {Object.entries(level2Data)
-            .sort(([a], [b]) => a.localeCompare(b))
+            .sort(([a], [b]) => {
+              const numA = extractOrderNumber(a);
+              const numB = extractOrderNumber(b);
+              return numA - numB;
+            })
             .map(([nivel2, data]) => (
               <DFCLevel2Item
                 key={nivel2}
