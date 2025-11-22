@@ -90,6 +90,47 @@ export type Database = {
           },
         ]
       }
+      dfc_mapping: {
+        Row: {
+          categoria: string | null
+          created_at: string | null
+          descricao: string
+          id: string
+          nivel_1: string
+          nivel_2: string
+          school_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          categoria?: string | null
+          created_at?: string | null
+          descricao: string
+          id?: string
+          nivel_1: string
+          nivel_2: string
+          school_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          categoria?: string | null
+          created_at?: string | null
+          descricao?: string
+          id?: string
+          nivel_1?: string
+          nivel_2?: string
+          school_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dfc_mapping_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

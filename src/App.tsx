@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Dashboard } from "./pages/Dashboard";
 import { Transactions } from "./pages/Transactions";
 import { Pending } from "./pages/Pending";
+import { DFCGerencial } from "./pages/DFCGerencial";
 import UserManagement from "./pages/UserManagement";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/school/:schoolSlug/dashboard" element={<SchoolRoute><Dashboard /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/transactions" element={<SchoolRoute><Transactions /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/pending" element={<SchoolRoute><Pending /></SchoolRoute>} />
+          <Route path="/school/:schoolSlug/dfc-gerencial" element={<SchoolRoute><DFCGerencial /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/users" element={<AdminGuard><SchoolRoute><UserManagement /></SchoolRoute></AdminGuard>} />
           <Route path="/school/:schoolSlug/admin/integrations" element={<AdminGuard><SchoolRoute><AdminPanel /></SchoolRoute></AdminGuard>} />
           
