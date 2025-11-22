@@ -5,6 +5,7 @@ import { LogIn, RefreshCw, Database, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSchool } from "@/contexts/SchoolContext";
+import { DFCUploadCSV } from "./DFCUploadCSV";
 
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
@@ -328,16 +329,19 @@ export const AdminPanel = () => {
   }
 
   return (
-    <Card className="mb-8 border-primary/20 bg-primary/5">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="h-5 w-5" />
-          Painel Administrativo
-        </CardTitle>
-        <CardDescription>
-          Configure a integração com Conta Azul e sincronize os dados
-        </CardDescription>
-      </CardHeader>
+    <>
+      {school?.slug === 'paulo-freire' && <DFCUploadCSV />}
+      
+      <Card className="mb-8 border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Painel Administrativo
+          </CardTitle>
+          <CardDescription>
+            Configure a integração com Conta Azul e sincronize os dados
+          </CardDescription>
+        </CardHeader>
       <CardContent className="space-y-4">
         {!hasConnection ? (
           <div className="space-y-2">
@@ -470,5 +474,6 @@ export const AdminPanel = () => {
         )}
       </CardContent>
     </Card>
+    </>
   );
 };

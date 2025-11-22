@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, List, Users, School, Clock } from "lucide-react";
+import { LogOut, LayoutDashboard, List, Users, School, Clock, FileBarChart } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useSchool } from "@/contexts/SchoolContext";
@@ -125,6 +125,17 @@ export const Layout = ({ children }: LayoutProps) => {
                   Pendências
                 </Button>
               </Link>
+              {school?.slug === 'paulo-freire' && (
+                <Link to={`/school/${schoolSlug}/dfc-gerencial`}>
+                  <Button 
+                    variant={location.pathname.includes("/dfc-gerencial") ? "default" : "ghost"} 
+                    size="sm"
+                  >
+                    <FileBarChart className="h-4 w-4 mr-2" />
+                    DFC Gerencial
+                  </Button>
+                </Link>
+              )}
               {isAdmin && (
                 <Link to={`/school/${schoolSlug}/users`}>
                   <Button 
