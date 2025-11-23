@@ -31,16 +31,15 @@ export const DFCUploadCSV = () => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-      // Mapear colunas (assumindo que são E, H, I, J conforme especificado)
+      // Mapear colunas: C=Descrição, D=Categoria, H=Nível 2, G=Nível 1
       const mappings: CSVRow[] = [];
 
       jsonData.forEach((row: any) => {
-        // Ajustar conforme estrutura real do CSV
-        // IMPORTANTE: Colunas I e J foram corrigidas (estavam invertidas)
-        const descricao = row['Descrição'] || row['E'] || row[Object.keys(row)[4]];
-        const categoria = row['Categoria'] || row['H'] || row[Object.keys(row)[7]];
-        const nivel_2 = row['Nível 2'] || row['I'] || row[Object.keys(row)[8]]; // Coluna I = Nível 2
-        const nivel_1 = row['Nível 1'] || row['J'] || row[Object.keys(row)[9]]; // Coluna J = Nível 1
+        // Ajustar conforme estrutura real do Excel
+        const descricao = row['Descrição'] || row['C'] || row[Object.keys(row)[2]];
+        const categoria = row['Categoria'] || row['D'] || row[Object.keys(row)[3]];
+        const nivel_2 = row['Nível 2'] || row['H'] || row[Object.keys(row)[7]]; // Coluna H = Nível 2
+        const nivel_1 = row['Nível 1'] || row['G'] || row[Object.keys(row)[6]]; // Coluna G = Nível 1
 
         if (descricao && nivel_1 && nivel_2) {
           mappings.push({
@@ -164,10 +163,10 @@ export const DFCUploadCSV = () => {
               Formato esperado
             </p>
             <ul className="list-disc list-inside text-blue-700 dark:text-blue-300 mt-2 space-y-1">
-              <li>Coluna E: Descrição (texto exato do lançamento)</li>
-              <li>Coluna H: Categoria (opcional)</li>
-              <li>Coluna I: Nível 2 (ex: 1.1 Receita com Mensalidade)</li>
-              <li>Coluna J: Nível 1 (ex: 1. Receita Bruta)</li>
+              <li>Coluna C: Descrição (texto exato do lançamento)</li>
+              <li>Coluna D: Categoria (opcional)</li>
+              <li>Coluna H: Nível 2 (ex: 1.1 Receita com Mensalidade)</li>
+              <li>Coluna G: Nível 1 (ex: 1. Receita Bruta)</li>
             </ul>
           </div>
         </div>
