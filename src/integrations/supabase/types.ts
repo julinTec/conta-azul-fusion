@@ -84,7 +84,7 @@ export type Database = {
           {
             foreignKeyName: "conta_azul_config_school_id_fkey"
             columns: ["school_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "schools"
             referencedColumns: ["id"]
           },
