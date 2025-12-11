@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.send-sync-notification]
 verify_jwt = false
+
+[functions.test-conta-azul-categories]
+verify_jwt = true
