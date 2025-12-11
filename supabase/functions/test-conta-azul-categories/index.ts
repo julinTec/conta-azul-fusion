@@ -64,17 +64,40 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
+  // Usar query params como sync-conta-azul e daily-sync-job
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a receber: ${url}`);
   
-  const response = await fetch(url, {
+  // Tentar primeiro com GET (como as outras funções), senão POST
+  let response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
   });
+
+  // Se GET falhar com 400/405, tentar POST
+  if (response.status === 400 || response.status === 405) {
+    console.log('GET falhou, tentando POST...');
+    const postUrl = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-receber/buscar`;
+    response = await fetch(postUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        data_vencimento_de: startDate,
+        data_vencimento_ate: endDate,
+        tamanho_pagina: limit,
+        pagina: 0,
+      }),
+    });
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -97,17 +120,40 @@ async function fetchContasPagar(accessToken: string, limit: number): Promise<any
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
+  // Usar query params como sync-conta-azul e daily-sync-job
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a pagar: ${url}`);
   
-  const response = await fetch(url, {
+  // Tentar primeiro com GET (como as outras funções), senão POST
+  let response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
   });
+
+  // Se GET falhar com 400/405, tentar POST
+  if (response.status === 400 || response.status === 405) {
+    console.log('GET falhou, tentando POST...');
+    const postUrl = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar`;
+    response = await fetch(postUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        data_vencimento_de: startDate,
+        data_vencimento_ate: endDate,
+        tamanho_pagina: limit,
+        pagina: 0,
+      }),
+    });
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
