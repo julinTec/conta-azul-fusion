@@ -528,7 +528,7 @@ export const AdminPanel = () => {
               )}
             </Button>
 
-            {categoryTestResults && (
+            {categoryTestResults && categoryTestResults.summary && (
               <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -536,8 +536,8 @@ export const AdminPanel = () => {
                     Resultados do Teste de Categorias
                   </CardTitle>
                   <CardDescription>
-                    Taxa de sucesso: {categoryTestResults.summary.successRate} | 
-                    {categoryTestResults.summary.categoriesFound} categorias encontradas
+                    Taxa de sucesso: {categoryTestResults.summary.successRate || 'N/A'} | 
+                    {categoryTestResults.summary.categoriesFound || 0} categorias encontradas
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
