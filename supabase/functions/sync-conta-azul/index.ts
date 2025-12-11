@@ -6,7 +6,66 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Função removida - não precisamos mais do Vault
+const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
+
+// Busca categoria real de uma transação via API de parcelas
+async function fetchCategoryForTransaction(
+  parcelaId: string, 
+  accessToken: string
+): Promise<string | null> {
+  try {
+    const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data?.evento?.rateio?.[0]?.nome_categoria || null;
+  } catch (error) {
+    console.error(`Error fetching category for ${parcelaId}:`, error);
+    return null;
+  }
+}
+
+// Enriquece transações com categorias reais em lotes de 5 com delay de 300ms
+async function enrichTransactionsWithCategories(
+  transactions: any[], 
+  accessToken: string
+): Promise<any[]> {
+  const batchSize = 5;
+  const delayMs = 300;
+  
+  console.log(`Enriching ${transactions.length} transactions with real categories...`);
+  let categoriesFound = 0;
+  
+  for (let i = 0; i < transactions.length; i += batchSize) {
+    const batch = transactions.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(async (tx) => {
+      // Extrair ID do external_id (formato: "receber_{id}" ou "pagar_{id}")
+      const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
+      const categoria = await fetchCategoryForTransaction(parcelaId, accessToken);
+      
+      if (categoria) {
+        tx.category_name = categoria;
+        categoriesFound++;
+      }
+      // Se não encontrou, mantém o fallback já definido
+    }));
+    
+    // Delay entre lotes para não sobrecarregar a API
+    if (i + batchSize < transactions.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  console.log(`Categories enrichment complete: ${categoriesFound}/${transactions.length} transactions with real categories`);
+  return transactions;
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -206,48 +265,52 @@ serve(async (req) => {
       item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'ATRASADO' || item.status_traduzido === 'EM_ABERTO'
     );
 
-    // Mapear para o formato da tabela
-    const transactions = [
-      ...filteredReceberItems.map((item: any) => ({
-        external_id: `receber_${item.id}`,
-        type: 'income',
-          amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
-        description: item.descricao || 'Conta a Receber',
-        transaction_date: item.data_vencimento,
-        status: item.status_traduzido,
-        category_name: 'Receita',
-        category_color: '#22c55e',
-        entity_name: item.fornecedor?.nome || null,
-        school_id: targetSchoolId,
-        raw_data: item,
-      })),
-      ...filteredPagarItems.map((item: any) => ({
-        external_id: `pagar_${item.id}`,
-        type: 'expense',
-        amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
-        description: item.descricao || 'Conta a Pagar',
-        transaction_date: item.data_vencimento,
-        status: item.status_traduzido,
-        category_name: 'Despesa',
-        category_color: '#ef4444',
-        entity_name: item.fornecedor?.nome || null,
-        school_id: targetSchoolId,
-        raw_data: item,
-      })),
-    ];
+    // Mapear para o formato da tabela com fallback "Outras Receitas" / "Outras Despesas"
+    const incomeRows = filteredReceberItems.map((item: any) => ({
+      external_id: `receber_${item.id}`,
+      type: 'income',
+      amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
+      description: item.descricao || 'Conta a Receber',
+      transaction_date: item.data_vencimento,
+      status: item.status_traduzido,
+      category_name: 'Outras Receitas', // Fallback - será substituído se encontrar categoria real
+      category_color: '#22c55e',
+      entity_name: item.fornecedor?.nome || null,
+      school_id: targetSchoolId,
+      raw_data: item,
+    }));
+
+    const expenseRows = filteredPagarItems.map((item: any) => ({
+      external_id: `pagar_${item.id}`,
+      type: 'expense',
+      amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
+      description: item.descricao || 'Conta a Pagar',
+      transaction_date: item.data_vencimento,
+      status: item.status_traduzido,
+      category_name: 'Outras Despesas', // Fallback - será substituído se encontrar categoria real
+      category_color: '#ef4444',
+      entity_name: item.fornecedor?.nome || null,
+      school_id: targetSchoolId,
+      raw_data: item,
+    }));
+
+    // Enriquecer com categorias reais do Conta Azul
+    const allTransactions = [...incomeRows, ...expenseRows];
+    const enrichedTransactions = await enrichTransactionsWithCategories(allTransactions, accessToken);
 
     console.log('=== SYNC DEBUG ===');
-    console.log('Total transactions to sync:', transactions.length);
-    console.log('Sample transactions (first 3):', transactions.slice(0, 3).map(t => ({
+    console.log('Total transactions to sync:', enrichedTransactions.length);
+    console.log('Sample transactions (first 3):', enrichedTransactions.slice(0, 3).map(t => ({
       id: t.external_id,
       type: t.type,
       amount: t.amount,
       date: t.transaction_date,
-      status: t.status
+      status: t.status,
+      category: t.category_name
     })));
     
     // Log totals by month
-    const monthlyTotals = transactions.reduce((acc: any, t: any) => {
+    const monthlyTotals = enrichedTransactions.reduce((acc: any, t: any) => {
       const month = t.transaction_date.substring(0, 7);
       if (!acc[month]) acc[month] = { income: 0, expense: 0 };
       if (t.type === 'income') acc[month].income += Number(t.amount);
@@ -259,18 +322,18 @@ serve(async (req) => {
     // Inserir/atualizar transações no banco (upsert)
     const { error: upsertError } = await supabaseClient
       .from('synced_transactions')
-      .upsert(transactions, { onConflict: 'external_id' });
+      .upsert(enrichedTransactions, { onConflict: 'external_id' });
 
     if (upsertError) {
       throw upsertError;
     }
 
-    console.log(`Successfully synced ${transactions.length} transactions`);
+    console.log(`Successfully synced ${enrichedTransactions.length} transactions`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        count: transactions.length,
+        count: enrichedTransactions.length,
         message: 'Sincronização concluída com sucesso',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
