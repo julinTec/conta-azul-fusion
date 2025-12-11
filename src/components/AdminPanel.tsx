@@ -5,7 +5,6 @@ import { LogIn, RefreshCw, Database, LogOut, Tags } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSchool } from "@/contexts/SchoolContext";
-import { DFCUploadCSV } from "./DFCUploadCSV";
 import { ScrollArea } from "@/components/ui/scroll-area";
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
@@ -367,8 +366,6 @@ export const AdminPanel = () => {
 
   return (
     <>
-      {school?.slug === 'paulo-freire' && <DFCUploadCSV />}
-      
       <Card className="mb-8 border-primary/20 bg-primary/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

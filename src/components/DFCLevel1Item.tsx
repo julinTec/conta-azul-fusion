@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { DFCLevel2Item } from "./DFCLevel2Item";
-import { extractOrderNumber } from "@/lib/dfcUtils";
 
 interface Level2Group {
   total: number;
@@ -17,6 +16,13 @@ interface DFCLevel1ItemProps {
 
 export const DFCLevel1Item = ({ nivel1, total, level2Data }: DFCLevel1ItemProps) => {
   const [isOpen, setIsOpen] = useState(false);
+
+  // Ordenar categorias alfabeticamente, mas "Outras Receitas" e "Outras Despesas" vão pro final
+  const sortedLevel2Keys = Object.keys(level2Data).sort((a, b) => {
+    if (a.startsWith('Outras')) return 1;
+    if (b.startsWith('Outras')) return -1;
+    return a.localeCompare(b, 'pt-BR');
+  });
 
   return (
     <Card className="overflow-hidden">
@@ -47,20 +53,14 @@ export const DFCLevel1Item = ({ nivel1, total, level2Data }: DFCLevel1ItemProps)
 
       {isOpen && (
         <div className="px-4 pb-4 space-y-2">
-          {Object.entries(level2Data)
-            .sort(([a], [b]) => {
-              const numA = extractOrderNumber(a);
-              const numB = extractOrderNumber(b);
-              return numA - numB;
-            })
-            .map(([nivel2, data]) => (
-              <DFCLevel2Item
-                key={nivel2}
-                nivel2={nivel2}
-                total={data.total}
-                transactions={data.transactions}
-              />
-            ))}
+          {sortedLevel2Keys.map((nivel2) => (
+            <DFCLevel2Item
+              key={nivel2}
+              nivel2={nivel2}
+              total={level2Data[nivel2].total}
+              transactions={level2Data[nivel2].transactions}
+            />
+          ))}
         </div>
       )}
     </Card>
