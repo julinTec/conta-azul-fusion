@@ -43,9 +43,13 @@ async function buscarCategoriaDaParcela(
 
     const data = await response.json();
     
-    // Extrair categoria do rateio (primeiro item)
-    const rateio = data?.evento?.rateio;
+    // Extrair categoria do rateio conforme estrutura da API
+    // Estrutura: { evento: { rateio: [{ nome_categoria: "..." }] } }
+    const evento = data?.evento || {};
+    const rateio = evento?.rateio || [];
     const nomeCategoria = rateio?.[0]?.nome_categoria || null;
+    
+    console.log(`Parcela ${parcelaId} - categoria: ${nomeCategoria}`);
     
     return { nome_categoria: nomeCategoria, rateio };
   } catch (error) {
@@ -77,8 +81,9 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
   }
 
   const data = await response.json();
-  console.log(`Contas a receber - resposta:`, JSON.stringify(data).substring(0, 500));
-  return data.items || data.content || data || [];
+  const itens = data?.itens || [];
+  console.log(`Contas a receber - total itens: ${itens.length}`);
+  return itens;
 }
 
 async function fetchContasPagar(accessToken: string, limit: number): Promise<any[]> {
@@ -104,8 +109,9 @@ async function fetchContasPagar(accessToken: string, limit: number): Promise<any
   }
 
   const data = await response.json();
-  console.log(`Contas a pagar - resposta:`, JSON.stringify(data).substring(0, 500));
-  return data.items || data.content || data || [];
+  const itens = data?.itens || [];
+  console.log(`Contas a pagar - total itens: ${itens.length}`);
+  return itens;
 }
 
 serve(async (req) => {
