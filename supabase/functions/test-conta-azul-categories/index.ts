@@ -9,7 +9,7 @@ const corsHeaders = {
 const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
 const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 300;
-const TEST_LIMIT = 20; // Testar apenas 20 lançamentos
+const TEST_LIMIT = 20;
 
 interface ParcelaDetails {
   id: string;
@@ -36,7 +36,8 @@ async function buscarCategoriaDaParcela(
     });
 
     if (!response.ok) {
-      console.error(`Erro ao buscar parcela ${parcelaId}: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Erro ao buscar parcela ${parcelaId}: ${response.status} - ${errorText}`);
       return { nome_categoria: null, rateio: null };
     }
 
@@ -57,7 +58,8 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
-  const url = `${CONTA_AZUL_API_BASE}/v1/contas-a-receber?data_emissao_inicio=${startDate}&data_emissao_fim=${endDate}&size=${limit}`;
+  // URL correta conforme sync-conta-azul
+  const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a receber: ${url}`);
   
@@ -75,14 +77,16 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
   }
 
   const data = await response.json();
-  return data.items || data || [];
+  console.log(`Contas a receber - resposta:`, JSON.stringify(data).substring(0, 500));
+  return data.items || data.content || data || [];
 }
 
 async function fetchContasPagar(accessToken: string, limit: number): Promise<any[]> {
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
-  const url = `${CONTA_AZUL_API_BASE}/v1/contas-a-pagar?data_emissao_inicio=${startDate}&data_emissao_fim=${endDate}&size=${limit}`;
+  // URL correta conforme sync-conta-azul
+  const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a pagar: ${url}`);
   
@@ -100,7 +104,8 @@ async function fetchContasPagar(accessToken: string, limit: number): Promise<any
   }
 
   const data = await response.json();
-  return data.items || data || [];
+  console.log(`Contas a pagar - resposta:`, JSON.stringify(data).substring(0, 500));
+  return data.items || data.content || data || [];
 }
 
 serve(async (req) => {
@@ -280,20 +285,30 @@ serve(async (req) => {
 
     const comCategoria = resultados.filter(r => r.nome_categoria_principal !== null).length;
     const semCategoria = resultados.filter(r => r.nome_categoria_principal === null).length;
+    const totalProcessed = resultados.length;
+    const successRate = totalProcessed > 0 ? `${((comCategoria / totalProcessed) * 100).toFixed(1)}%` : '0%';
 
+    // Resposta com estrutura esperada pelo frontend
     const response = {
-      sucesso: true,
-      resumo: {
-        total_processado: resultados.length,
-        com_categoria: comCategoria,
-        sem_categoria: semCategoria,
-        taxa_sucesso: `${((comCategoria / resultados.length) * 100).toFixed(1)}%`,
+      success: true,
+      summary: {
+        totalProcessed,
+        successRate,
+        categoriesFound: Object.keys(categoriasEncontradas).length,
+        withCategory: comCategoria,
+        withoutCategory: semCategoria,
       },
       categorias_encontradas: categoriasEncontradas,
-      detalhes: resultados,
+      results: resultados.map(r => ({
+        id: r.id,
+        descricao: r.descricao,
+        tipo: r.tipo,
+        categoria_atual: r.categoria_atual,
+        nome_categoria_principal: r.nome_categoria_principal,
+      })),
     };
 
-    console.log('Teste concluído:', response.resumo);
+    console.log('Teste concluído:', response.summary);
 
     return new Response(JSON.stringify(response, null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -302,7 +317,16 @@ serve(async (req) => {
   } catch (error: unknown) {
     console.error('Erro no teste:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ 
+      success: false,
+      error: errorMessage,
+      summary: {
+        totalProcessed: 0,
+        successRate: '0%',
+        categoriesFound: 0,
+      },
+      results: [],
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
