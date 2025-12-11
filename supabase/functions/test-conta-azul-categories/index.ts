@@ -32,12 +32,14 @@ async function buscarCategoriaDaParcela(
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Erro ao buscar parcela ${parcelaId}: ${response.status} - ${errorText}`);
+      console.error(`Erro parcela ${parcelaId} - Status: ${response.status}`);
+      console.error(`Erro parcela ${parcelaId} - Body: ${errorText.substring(0, 500)}`);
       return { nome_categoria: null, rateio: null };
     }
 
@@ -62,7 +64,6 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
-  // URL correta conforme sync-conta-azul
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-receber/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a receber: ${url}`);
@@ -71,18 +72,24 @@ async function fetchContasReceber(accessToken: string, limit: number): Promise<a
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Erro ao buscar contas a receber: ${response.status} - ${errorText}`);
+    console.error(`Erro contas a receber - Status: ${response.status}`);
+    console.error(`Erro contas a receber - Headers: ${JSON.stringify(Object.fromEntries(response.headers))}`);
+    console.error(`Erro contas a receber - Body: ${errorText.substring(0, 1000)}`);
     return [];
   }
 
   const data = await response.json();
   const itens = data?.itens || [];
   console.log(`Contas a receber - total itens: ${itens.length}`);
+  if (itens.length > 0) {
+    console.log(`Primeiro item receber: ${JSON.stringify(itens[0]).substring(0, 300)}`);
+  }
   return itens;
 }
 
@@ -90,7 +97,6 @@ async function fetchContasPagar(accessToken: string, limit: number): Promise<any
   const startDate = '2024-01-01';
   const endDate = new Date().toISOString().split('T')[0];
   
-  // URL correta conforme sync-conta-azul
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar?data_vencimento_de=${startDate}&data_vencimento_ate=${endDate}&tamanho_pagina=${limit}&pagina=0`;
   
   console.log(`Buscando contas a pagar: ${url}`);
@@ -99,18 +105,24 @@ async function fetchContasPagar(accessToken: string, limit: number): Promise<any
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Erro ao buscar contas a pagar: ${response.status} - ${errorText}`);
+    console.error(`Erro contas a pagar - Status: ${response.status}`);
+    console.error(`Erro contas a pagar - Headers: ${JSON.stringify(Object.fromEntries(response.headers))}`);
+    console.error(`Erro contas a pagar - Body: ${errorText.substring(0, 1000)}`);
     return [];
   }
 
   const data = await response.json();
   const itens = data?.itens || [];
   console.log(`Contas a pagar - total itens: ${itens.length}`);
+  if (itens.length > 0) {
+    console.log(`Primeiro item pagar: ${JSON.stringify(itens[0]).substring(0, 300)}`);
+  }
   return itens;
 }
 
@@ -180,6 +192,7 @@ serve(async (req) => {
       .single();
 
     if (configError || !config) {
+      console.error('Erro ao buscar config:', configError);
       return new Response(JSON.stringify({ error: 'Configuração Conta Azul não encontrada para esta escola' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -188,43 +201,59 @@ serve(async (req) => {
 
     let accessToken = config.access_token;
 
+    // Diagnóstico do token
+    console.log('=== DIAGNÓSTICO DO TOKEN ===');
+    console.log(`Token presente: ${!!accessToken}`);
+    console.log(`Token length: ${accessToken?.length || 0}`);
+    console.log(`Token prefix: ${accessToken?.substring(0, 20)}...`);
+    console.log(`Expires at: ${config.expires_at}`);
+    console.log(`Token expirado: ${new Date(config.expires_at) <= new Date()}`);
+
     // Verificar se token expirou e renovar se necessário
     if (new Date(config.expires_at) <= new Date()) {
-      console.log('Token expirado, renovando...');
+      console.log('Token expirado, renovando via supabase.functions.invoke...');
       
       // Buscar credenciais OAuth da escola
-      const { data: oauthCreds } = await supabase
+      const { data: oauthCreds, error: credsError } = await supabase
         .from('school_oauth_credentials')
         .select('client_id, client_secret')
         .eq('school_id', school_id)
         .single();
 
-      if (!oauthCreds) {
+      if (credsError || !oauthCreds) {
+        console.error('Erro ao buscar credenciais OAuth:', credsError);
         return new Response(JSON.stringify({ error: 'Credenciais OAuth não encontradas' }), {
           status: 404,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      const tokenResponse = await fetch(`${supabaseUrl}/functions/v1/conta-azul-auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      console.log(`OAuth client_id presente: ${!!oauthCreds.client_id}`);
+      console.log(`OAuth client_secret presente: ${!!oauthCreds.client_secret}`);
+
+      // Usar supabase.functions.invoke igual ao sync-conta-azul
+      const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
+        body: { 
           refreshToken: config.refresh_token,
           client_id: oauthCreds.client_id,
-          client_secret: oauthCreds.client_secret,
-        }),
+          client_secret: oauthCreds.client_secret
+        },
       });
 
-      if (!tokenResponse.ok) {
-        return new Response(JSON.stringify({ error: 'Falha ao renovar token' }), {
+      if (refreshRes.error) {
+        console.error('Token refresh failed:', refreshRes.error);
+        return new Response(JSON.stringify({ error: 'Falha ao renovar token: ' + refreshRes.error.message }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      const tokenData = await tokenResponse.json();
+      const tokenData = refreshRes.data;
       accessToken = tokenData.access_token;
+
+      console.log('Token renovado com sucesso');
+      console.log(`Novo token length: ${accessToken?.length || 0}`);
+      console.log(`Novo token prefix: ${accessToken?.substring(0, 20)}...`);
 
       // Salvar novos tokens
       await supabase.from('conta_azul_config').upsert({
@@ -235,7 +264,20 @@ serve(async (req) => {
         updated_by: user.id,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'school_id' });
+
+      console.log('Tokens salvos no banco');
     }
+
+    // Verificação final do token antes das requisições
+    if (!accessToken) {
+      console.error('ACCESS TOKEN IS NULL OR EMPTY AFTER REFRESH!');
+      return new Response(JSON.stringify({ error: 'Token de acesso inválido' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('=== INICIANDO BUSCA DE LANÇAMENTOS ===');
 
     // Buscar lançamentos (limitado para teste)
     const halfLimit = Math.floor(TEST_LIMIT / 2);
