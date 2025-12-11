@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogIn, RefreshCw, Database, LogOut } from "lucide-react";
+import { LogIn, RefreshCw, Database, LogOut, Tags } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSchool } from "@/contexts/SchoolContext";
 import { DFCUploadCSV } from "./DFCUploadCSV";
-
+import { ScrollArea } from "@/components/ui/scroll-area";
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
 export const AdminPanel = () => {
@@ -26,6 +26,22 @@ export const AdminPanel = () => {
     totalTransactions: number;
     totalIncome: number;
     totalExpense: number;
+  } | null>(null);
+  const [testingCategories, setTestingCategories] = useState(false);
+  const [categoryTestResults, setCategoryTestResults] = useState<{
+    summary: {
+      totalProcessed: number;
+      successRate: string;
+      categoriesFound: number;
+      categoryCounts: Record<string, number>;
+    };
+    results: Array<{
+      id: string;
+      descricao: string;
+      tipo: string;
+      categoria_atual: string;
+      nome_categoria_principal: string;
+    }>;
   } | null>(null);
 
   useEffect(() => {
@@ -323,6 +339,27 @@ export const AdminPanel = () => {
     }
   };
 
+  const handleTestCategories = async () => {
+    setTestingCategories(true);
+    setCategoryTestResults(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-conta-azul-categories', {
+        body: { school_id: school?.id }
+      });
+
+      if (error) throw error;
+
+      setCategoryTestResults(data);
+      toast.success(`Teste concluído! ${data.summary.totalProcessed} transações analisadas.`);
+    } catch (error: any) {
+      console.error('Error testing categories:', error);
+      toast.error(error.message || 'Erro ao testar categorias');
+    } finally {
+      setTestingCategories(false);
+    }
+  };
+
   // Don't render anything if not admin or still checking
   if (isAdmin === null || isAdmin === false) {
     return null;
@@ -470,6 +507,73 @@ export const AdminPanel = () => {
             <p className="text-xs text-muted-foreground text-center">
               Use "Limpar e Re-sincronizar" se os valores estiverem incorretos
             </p>
+
+            <Button 
+              onClick={handleTestCategories} 
+              disabled={syncing || clearing || testingCategories}
+              variant="secondary"
+              size="lg" 
+              className="w-full"
+            >
+              {testingCategories ? (
+                <>
+                  <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                  Testando Categorias...
+                </>
+              ) : (
+                <>
+                  <Tags className="mr-2 h-5 w-5" />
+                  Testar Categorias (API Nova)
+                </>
+              )}
+            </Button>
+
+            {categoryTestResults && (
+              <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Tags className="h-4 w-4" />
+                    Resultados do Teste de Categorias
+                  </CardTitle>
+                  <CardDescription>
+                    Taxa de sucesso: {categoryTestResults.summary.successRate} | 
+                    {categoryTestResults.summary.categoriesFound} categorias encontradas
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-64">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left p-2 font-medium">Descrição</th>
+                          <th className="text-left p-2 font-medium">Tipo</th>
+                          <th className="text-left p-2 font-medium">Cat. Atual</th>
+                          <th className="text-left p-2 font-medium">Nova Categoria</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {categoryTestResults.results.map((item) => (
+                          <tr key={item.id} className="border-b border-border/50">
+                            <td className="p-2 truncate max-w-[200px]" title={item.descricao}>
+                              {item.descricao}
+                            </td>
+                            <td className="p-2">
+                              <span className={item.tipo === 'Receita' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                                {item.tipo}
+                              </span>
+                            </td>
+                            <td className="p-2 text-muted-foreground">{item.categoria_atual}</td>
+                            <td className="p-2 font-medium text-blue-600 dark:text-blue-400">
+                              {item.nome_categoria_principal}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
       </CardContent>
