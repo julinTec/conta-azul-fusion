@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, List, Users, School, Clock, FileBarChart } from "lucide-react";
+import { LogOut, LayoutDashboard, List, Users, School, Clock, FileBarChart, Activity } from "lucide-react";
 import { toast } from "sonner";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useSchool } from "@/contexts/SchoolContext";
@@ -137,15 +137,26 @@ export const Layout = ({ children }: LayoutProps) => {
                 </Link>
               )}
               {isAdmin && (
-                <Link to={`/school/${schoolSlug}/users`}>
-                  <Button 
-                    variant={location.pathname.includes("/users") ? "default" : "ghost"} 
-                    size="sm"
-                  >
-                    <Users className="h-4 w-4 mr-2" />
-                    Usuários
-                  </Button>
-                </Link>
+                <>
+                  <Link to={`/school/${schoolSlug}/users`}>
+                    <Button 
+                      variant={location.pathname.includes("/users") ? "default" : "ghost"} 
+                      size="sm"
+                    >
+                      <Users className="h-4 w-4 mr-2" />
+                      Usuários
+                    </Button>
+                  </Link>
+                  <Link to={`/school/${schoolSlug}/admin/sync-monitor`}>
+                    <Button 
+                      variant={location.pathname.includes("/sync-monitor") ? "default" : "ghost"} 
+                      size="sm"
+                    >
+                      <Activity className="h-4 w-4 mr-2" />
+                      Sync Monitor
+                    </Button>
+                  </Link>
+                </>
               )}
             </nav>
             <span className="text-sm text-muted-foreground">{user?.email}</span>

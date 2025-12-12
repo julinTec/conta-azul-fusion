@@ -16,6 +16,7 @@ import SchoolSelection from "./pages/SchoolSelection";
 import { AdminGuard } from "./components/AdminGuard";
 import { AdminPanel } from "./components/AdminPanel";
 import { SchoolRoute } from "./components/SchoolRoute";
+import SyncMonitor from "./pages/SyncMonitor";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
           <Route path="/school/:schoolSlug/dfc-gerencial" element={<SchoolRoute><DFCGerencial /></SchoolRoute>} />
           <Route path="/school/:schoolSlug/users" element={<AdminGuard><SchoolRoute><UserManagement /></SchoolRoute></AdminGuard>} />
           <Route path="/school/:schoolSlug/admin/integrations" element={<AdminGuard><SchoolRoute><AdminPanel /></SchoolRoute></AdminGuard>} />
+          <Route path="/school/:schoolSlug/admin/sync-monitor" element={<AdminGuard><SchoolRoute><SyncMonitor /></SchoolRoute></AdminGuard>} />
           
           {/* Rotas legadas - redirecionar para seleção de escola */}
           <Route path="/dashboard" element={<Navigate to="/schools" replace />} />
