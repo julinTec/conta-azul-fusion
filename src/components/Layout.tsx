@@ -125,17 +125,15 @@ export const Layout = ({ children }: LayoutProps) => {
                   Pendências
                 </Button>
               </Link>
-              {school?.slug === 'paulo-freire' && (
-                <Link to={`/school/${schoolSlug}/dfc-gerencial`}>
-                  <Button 
-                    variant={location.pathname.includes("/dfc-gerencial") ? "default" : "ghost"} 
-                    size="sm"
-                  >
-                    <FileBarChart className="h-4 w-4 mr-2" />
-                    DFC Gerencial
-                  </Button>
-                </Link>
-              )}
+              <Link to={`/school/${schoolSlug}/dfc-gerencial`}>
+                <Button 
+                  variant={location.pathname.includes("/dfc-gerencial") ? "default" : "ghost"} 
+                  size="sm"
+                >
+                  <FileBarChart className="h-4 w-4 mr-2" />
+                  DFC Gerencial
+                </Button>
+              </Link>
               {isAdmin && (
                 <>
                   <Link to={`/school/${schoolSlug}/users`}>
