@@ -13,7 +13,7 @@ const corsHeaders = {
 
 const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
 
-// Busca categoria com retry INFINITO para rate limits
+// Busca categoria com retry para rate limits
 async function fetchCategoryForTransaction(
   parcelaId: string, 
   accessToken: string
@@ -21,9 +21,9 @@ async function fetchCategoryForTransaction(
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
   
   let attempt = 0;
-  const maxNonRateLimitRetries = 3;
+  const maxRetries = 5;
   
-  while (true) {
+  while (attempt < maxRetries) {
     attempt++;
     
     try {
@@ -35,26 +35,24 @@ async function fetchCategoryForTransaction(
         },
       });
       
-      // Rate limit - esperar e tentar novamente SEMPRE (sem limite)
+      // Rate limit - esperar e tentar novamente
       if (response.status === 429) {
-        const backoffMs = 3000; // 3 segundos fixo para rate limit
-        console.log(`[FETCH] Rate limit for ${parcelaId}, waiting 3s (attempt ${attempt})...`);
+        const backoffMs = 2000 * attempt;
+        console.log(`[FETCH] Rate limit for ${parcelaId}, waiting ${backoffMs}ms (attempt ${attempt})...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
-        continue; // Retry infinito para rate limits
+        continue;
       }
       
-      // Erro de servidor - retry limitado
+      // Erro de servidor - retry
       if (response.status >= 500) {
-        if (attempt < maxNonRateLimitRetries) {
+        if (attempt < maxRetries) {
           const backoffMs = 1000 * attempt;
-          console.log(`[FETCH] Server error ${response.status} for ${parcelaId}, retrying in ${backoffMs}ms`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
         return { category: null, reason: 'http_error' };
       }
       
-      // Outros erros HTTP - não retry
       if (!response.ok) {
         return { category: null, reason: 'http_error' };
       }
@@ -62,7 +60,6 @@ async function fetchCategoryForTransaction(
       const data = await response.json();
       const rateio = data?.evento?.rateio;
       
-      // Transação sem rateio (não categorizada no Conta Azul)
       if (!rateio || rateio.length === 0) {
         return { category: null, reason: 'no_rateio' };
       }
@@ -75,129 +72,118 @@ async function fetchCategoryForTransaction(
       return { category: categoria, reason: 'success' };
       
     } catch (error) {
-      if (attempt < maxNonRateLimitRetries) {
-        const backoffMs = 500 * attempt;
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
         continue;
       }
       return { category: null, reason: 'network_error' };
     }
   }
+  
+  return { category: null, reason: 'max_retries' };
 }
 
-// Enriquece transações SEQUENCIALMENTE com salvamento incremental
-async function enrichTransactionsWithCategories(
+// Enriquece transações com checkpoint para sincronização resumível
+async function enrichTransactionsWithCheckpoint(
   transactions: any[], 
   accessToken: string,
-  supabaseClient: any
-): Promise<any[]> {
-  // Configurações ultra-conservadoras
-  let currentDelay = 300;  // Delay adaptativo inicial
-  const minDelay = 300;    // Mínimo 300ms entre requests
-  const maxDelay = 5000;   // Máximo 5s em caso de rate limits
-  const saveEvery = 50;    // Salvar a cada 50 transações
+  supabaseClient: any,
+  schoolId: string,
+  startIndex: number = 0
+): Promise<{ processed: number; successCount: number; completed: boolean }> {
+  const saveEvery = 50;
+  const delayMs = 200;
   
-  let lastSavedIndex = 0;
+  let successCount = 0;
+  let processed = startIndex;
   const startTime = Date.now();
   
-  // Métricas
-  const metrics = {
-    success: 0,
-    no_rateio: 0,
-    empty_categoria: 0,
-    http_error: 0,
-    network_error: 0,
-  };
+  console.log(`[ENRICH] Starting from index ${startIndex} of ${transactions.length}`);
   
-  console.log(`[ENRICH] === STARTING SEQUENTIAL ENRICHMENT ===`);
-  console.log(`[ENRICH] Total transactions: ${transactions.length}`);
-  console.log(`[ENRICH] Initial delay: ${currentDelay}ms`);
-  console.log(`[ENRICH] Saving every: ${saveEvery} transactions`);
-  console.log(`[ENRICH] Estimated time: ${Math.ceil((transactions.length * currentDelay) / 60000)} minutes`);
-  
-  for (let i = 0; i < transactions.length; i++) {
+  for (let i = startIndex; i < transactions.length; i++) {
     const tx = transactions[i];
     const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
     
-    // Buscar categoria (com retry infinito para rate limits)
+    // Buscar categoria
     const result = await fetchCategoryForTransaction(parcelaId, accessToken);
     
-    // Atualizar métricas
-    if (result.reason === 'success') {
-      metrics.success++;
+    if (result.reason === 'success' && result.category) {
       tx.category_name = result.category;
-      // Reduzir delay gradualmente quando sucesso
-      currentDelay = Math.max(currentDelay - 10, minDelay);
-    } else {
-      metrics[result.reason as keyof typeof metrics]++;
-      // Se tivemos problemas, aumentar delay um pouco
-      if (result.reason === 'http_error' || result.reason === 'network_error') {
-        currentDelay = Math.min(currentDelay + 100, maxDelay);
-      }
+      successCount++;
     }
     
+    processed = i + 1;
+    
     // Salvamento incremental a cada N transações
-    if ((i + 1) % saveEvery === 0) {
-      const batchToSave = transactions.slice(lastSavedIndex, i + 1);
-      const { error } = await supabaseClient
+    if (processed % saveEvery === 0) {
+      const batchToSave = transactions.slice(i - saveEvery + 1, i + 1);
+      await supabaseClient
         .from('synced_transactions')
         .upsert(batchToSave, { onConflict: 'external_id' });
       
-      if (error) {
-        console.error(`[ENRICH] Partial save error at ${i + 1}:`, error.message);
-      } else {
-        console.log(`[ENRICH] ✓ SAVED ${i + 1}/${transactions.length} | success: ${metrics.success} | delay: ${currentDelay}ms`);
-      }
-      lastSavedIndex = i + 1;
-    }
-    
-    // Log de progresso detalhado a cada 20 transações
-    if ((i + 1) % 20 === 0) {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const avgTimePerTx = elapsed / (i + 1);
-      const remaining = transactions.length - i - 1;
-      const estimatedRemaining = Math.ceil((remaining * avgTimePerTx) / 60);
+      // Atualizar checkpoint
+      await supabaseClient
+        .from('sync_checkpoints')
+        .upsert({
+          school_id: schoolId,
+          last_processed_index: processed,
+          total_transactions: transactions.length,
+          success_count: successCount,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'school_id' });
       
-      console.log(`[ENRICH] Progress: ${i + 1}/${transactions.length} (${Math.round((i + 1) / transactions.length * 100)}%) | ~${estimatedRemaining}min remaining`);
+      console.log(`[ENRICH] Saved ${processed}/${transactions.length} (${Math.round(processed / transactions.length * 100)}%)`);
     }
     
-    // Delay antes da próxima transação (não aplicar após última)
+    // Log de progresso
+    if (processed % 100 === 0) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const rate = (processed - startIndex) / elapsed;
+      const remaining = transactions.length - processed;
+      const estimatedMin = Math.ceil(remaining / rate / 60);
+      console.log(`[ENRICH] Progress: ${processed}/${transactions.length} | ~${estimatedMin}min remaining`);
+    }
+    
+    // Delay entre requests
     if (i < transactions.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, currentDelay));
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
   
-  // Salvar transações restantes (que não completaram um lote de 50)
-  if (lastSavedIndex < transactions.length) {
-    const finalBatch = transactions.slice(lastSavedIndex);
-    const { error } = await supabaseClient
+  // Salvar transações restantes
+  const remainder = processed % saveEvery;
+  if (remainder > 0) {
+    const finalBatch = transactions.slice(processed - remainder, processed);
+    await supabaseClient
       .from('synced_transactions')
       .upsert(finalBatch, { onConflict: 'external_id' });
-    
-    if (error) {
-      console.error('[ENRICH] Final save error:', error.message);
-    } else {
-      console.log(`[ENRICH] ✓ FINAL SAVE: ${finalBatch.length} transactions`);
-    }
   }
   
-  // Log final completo
-  const totalTime = Math.round((Date.now() - startTime) / 1000);
-  const minutes = Math.floor(totalTime / 60);
-  const seconds = totalTime % 60;
+  // Verificar se completou
+  const completed = processed >= transactions.length;
   
-  console.log(`[ENRICH] ========================================`);
-  console.log(`[ENRICH] === ENRICHMENT COMPLETE ===`);
-  console.log(`[ENRICH] Total time: ${minutes}m ${seconds}s`);
-  console.log(`[ENRICH] Total transactions: ${transactions.length}`);
-  console.log(`[ENRICH] With real category: ${metrics.success} (${Math.round(metrics.success / transactions.length * 100)}%)`);
-  console.log(`[ENRICH] Without category (no rateio in CA): ${metrics.no_rateio}`);
-  console.log(`[ENRICH] Empty categoria: ${metrics.empty_categoria}`);
-  console.log(`[ENRICH] HTTP errors: ${metrics.http_error}`);
-  console.log(`[ENRICH] Network errors: ${metrics.network_error}`);
-  console.log(`[ENRICH] ========================================`);
+  if (completed) {
+    // Deletar checkpoint quando completar
+    await supabaseClient
+      .from('sync_checkpoints')
+      .delete()
+      .eq('school_id', schoolId);
+    
+    console.log(`[ENRICH] === COMPLETED === ${successCount}/${transactions.length} with categories`);
+  } else {
+    // Atualizar checkpoint final
+    await supabaseClient
+      .from('sync_checkpoints')
+      .upsert({
+        school_id: schoolId,
+        last_processed_index: processed,
+        total_transactions: transactions.length,
+        success_count: successCount,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'school_id' });
+  }
   
-  return transactions;
+  return { processed, successCount, completed };
 }
 
 serve(async (req) => {
@@ -233,12 +219,11 @@ serve(async (req) => {
 
     // Receber school_id do body
     const body = await req.json();
-    const { school_id } = body;
+    const { school_id, resume_only } = body;
 
-    // Buscar escola padrão se não fornecido (compatibilidade)
+    // Buscar escola padrão se não fornecido
     let targetSchoolId = school_id;
     if (!targetSchoolId) {
-      console.log('No school_id provided, using Paulo Freire as default');
       const { data: defaultSchool } = await supabaseClient
         .from('schools')
         .select('id')
@@ -249,7 +234,27 @@ serve(async (req) => {
 
     console.log('[SYNC] Starting sync for school_id:', targetSchoolId);
 
-    // Buscar configuração do Conta Azul DESTA ESCOLA
+    // Verificar se há checkpoint existente
+    const { data: existingCheckpoint } = await supabaseClient
+      .from('sync_checkpoints')
+      .select('*')
+      .eq('school_id', targetSchoolId)
+      .maybeSingle();
+
+    // Se resume_only=true e não há checkpoint, retornar que já completou
+    if (resume_only && !existingCheckpoint) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          completed: true,
+          message: 'Sincronização já foi completada anteriormente.',
+          progress: { processed: 0, total: 0, percentage: 100, successCount: 0 }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Buscar configuração do Conta Azul
     const { data: config, error: configError } = await supabaseClient
       .from('conta_azul_config')
       .select('id, access_token, refresh_token, expires_at, updated_by')
@@ -275,13 +280,9 @@ serve(async (req) => {
       throw new Error('Credenciais OAuth não configuradas para esta escola');
     }
 
-    console.log('[SYNC] Loading tokens from database...');
-
-    // Tokens agora vêm diretamente da tabela
     let accessToken = config.access_token;
-    let refreshToken = config.refresh_token;
 
-    // Verificar se o token precisa ser atualizado (com buffer de 5 minutos)
+    // Verificar se o token precisa ser atualizado
     const now = new Date();
     const expiresAt = new Date(config.expires_at);
     const bufferTime = 5 * 60 * 1000;
@@ -298,13 +299,11 @@ serve(async (req) => {
       });
 
       if (refreshRes.error) {
-        console.error('[SYNC] Token refresh failed:', refreshRes.error);
-        throw new Error('Os tokens expiraram. Por favor, desconecte e reconecte ao Conta Azul no painel administrativo.');
+        throw new Error('Os tokens expiraram. Por favor, desconecte e reconecte ao Conta Azul.');
       }
 
       const tokenData = refreshRes.data;
       accessToken = tokenData.access_token;
-      refreshToken = tokenData.refresh_token;
 
       await supabaseClient
         .from('conta_azul_config')
@@ -315,11 +314,67 @@ serve(async (req) => {
           updated_by: user.id,
         })
         .eq('id', config.id);
-
-      console.log('[SYNC] Tokens refreshed and saved');
     }
 
-    // Buscar dados desde abril de 2025
+    // Se há checkpoint existente, continuar de onde parou
+    if (existingCheckpoint) {
+      console.log('[SYNC] Resuming from checkpoint:', existingCheckpoint.last_processed_index);
+      
+      // Buscar transações existentes
+      const { data: existingTx } = await supabaseClient
+        .from('synced_transactions')
+        .select('*')
+        .eq('school_id', targetSchoolId)
+        .order('external_id');
+      
+      if (!existingTx || existingTx.length === 0) {
+        // Checkpoint órfão, limpar
+        await supabaseClient
+          .from('sync_checkpoints')
+          .delete()
+          .eq('school_id', targetSchoolId);
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            completed: true,
+            message: 'Checkpoint limpo. Por favor, inicie nova sincronização.',
+            progress: { processed: 0, total: 0, percentage: 100, successCount: 0 }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Processar a partir do checkpoint
+      const result = await enrichTransactionsWithCheckpoint(
+        existingTx,
+        accessToken,
+        supabaseClient,
+        targetSchoolId,
+        existingCheckpoint.last_processed_index
+      );
+
+      const percentage = Math.round((result.processed / existingTx.length) * 100);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          completed: result.completed,
+          message: result.completed 
+            ? `Sincronização completa! ${result.successCount} categorias encontradas.`
+            : `Progresso: ${result.processed}/${existingTx.length} (${percentage}%)`,
+          progress: {
+            processed: result.processed,
+            total: existingTx.length,
+            percentage,
+            successCount: result.successCount
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // NOVA SINCRONIZAÇÃO - buscar dados do Conta Azul
     const startDate = new Date(2025, 3, 1);
     const today = new Date();
     const formatDate = (date: Date) => date.toISOString().split('T')[0];
@@ -328,7 +383,6 @@ serve(async (req) => {
 
     const baseUrl = 'https://api-v2.contaazul.com';
 
-    // Função para buscar todas as páginas
     const fetchAllPages = async (endpoint: string, params: Record<string, string>) => {
       const allItems: any[] = [];
       let page = 1;
@@ -347,12 +401,10 @@ serve(async (req) => {
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`[SYNC] Conta Azul fetch failed ${response.status}:`, errorText);
           if (response.status === 401) {
-            throw new Error('Token de acesso inválido. Por favor, desconecte e reconecte ao Conta Azul no painel administrativo.');
+            throw new Error('Token de acesso inválido. Por favor, reconecte ao Conta Azul.');
           }
-          throw new Error(`Erro ao buscar dados do Conta Azul: ${response.status}`);
+          throw new Error(`Erro ao buscar dados: ${response.status}`);
         }
 
         const data = await response.json();
@@ -361,10 +413,7 @@ serve(async (req) => {
 
         allItems.push(...items);
         page++;
-        
-        if (items.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
       return allItems;
@@ -375,7 +424,6 @@ serve(async (req) => {
       'data_vencimento_ate': formatDate(today),
     };
 
-    // Buscar contas a receber e a pagar
     const [receberItems, pagarItems] = await Promise.all([
       fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-receber/buscar', params),
       fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', params),
@@ -383,16 +431,11 @@ serve(async (req) => {
 
     console.log(`[SYNC] Fetched ${receberItems.length} receivables, ${pagarItems.length} payables`);
 
-    // Filtrar itens com status relevantes
-    const filteredReceberItems = receberItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'ATRASADO' || item.status_traduzido === 'EM_ABERTO'
-    );
-    const filteredPagarItems = pagarItems.filter((item: any) => 
-      item.status_traduzido === 'RECEBIDO' || item.status_traduzido === 'ATRASADO' || item.status_traduzido === 'EM_ABERTO'
-    );
+    // Filtrar e mapear
+    const filterStatus = (item: any) => 
+      ['RECEBIDO', 'ATRASADO', 'EM_ABERTO'].includes(item.status_traduzido);
 
-    // Mapear para o formato da tabela com fallback
-    const incomeRows = filteredReceberItems.map((item: any) => ({
+    const incomeRows = receberItems.filter(filterStatus).map((item: any) => ({
       external_id: `receber_${item.id}`,
       type: 'income',
       amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
@@ -406,7 +449,7 @@ serve(async (req) => {
       raw_data: item,
     }));
 
-    const expenseRows = filteredPagarItems.map((item: any) => ({
+    const expenseRows = pagarItems.filter(filterStatus).map((item: any) => ({
       external_id: `pagar_${item.id}`,
       type: 'expense',
       amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
@@ -421,44 +464,52 @@ serve(async (req) => {
     }));
 
     const allTransactions = [...incomeRows, ...expenseRows];
-    console.log(`[SYNC] Total transactions to process: ${allTransactions.length}`);
+    console.log(`[SYNC] Total transactions: ${allTransactions.length}`);
 
-    // FASE 1: Salvar imediatamente com categorias de fallback
-    console.log('[SYNC] Phase 1: Saving transactions with fallback categories...');
+    // Salvar com categorias de fallback
     const { error: upsertError } = await supabaseClient
       .from('synced_transactions')
       .upsert(allTransactions, { onConflict: 'external_id' });
 
-    if (upsertError) {
-      console.error('[SYNC] Upsert error:', upsertError);
-      throw upsertError;
-    }
+    if (upsertError) throw upsertError;
 
-    console.log(`[SYNC] Phase 1 complete: ${allTransactions.length} transactions saved with fallback categories`);
+    // Criar checkpoint inicial
+    await supabaseClient
+      .from('sync_checkpoints')
+      .upsert({
+        school_id: targetSchoolId,
+        last_processed_index: 0,
+        total_transactions: allTransactions.length,
+        success_count: 0,
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'school_id' });
 
-    // FASE 2: Enriquecer com categorias reais em BACKGROUND (sequencial + salvamento incremental)
-    const backgroundEnrichment = async () => {
-      try {
-        console.log('[BACKGROUND] Starting ULTRA-ROBUST sequential category enrichment...');
-        console.log('[BACKGROUND] This will take approximately 15-20 minutes for full accuracy.');
-        
-        await enrichTransactionsWithCategories(allTransactions, accessToken, supabaseClient);
-        
-        console.log('[BACKGROUND] === ENRICHMENT TASK FINISHED ===');
-      } catch (err) {
-        console.error('[BACKGROUND] Enrichment failed:', err);
-      }
-    };
+    // Iniciar enriquecimento
+    const result = await enrichTransactionsWithCheckpoint(
+      allTransactions,
+      accessToken,
+      supabaseClient,
+      targetSchoolId,
+      0
+    );
 
-    // Iniciar enriquecimento em background sem esperar
-    EdgeRuntime.waitUntil(backgroundEnrichment());
+    const percentage = Math.round((result.processed / allTransactions.length) * 100);
 
-    // Retornar resposta imediata
     return new Response(
       JSON.stringify({
         success: true,
+        completed: result.completed,
         count: allTransactions.length,
-        message: `Sincronização iniciada! ${allTransactions.length} transações salvas. Categorias estão sendo enriquecidas em segundo plano (15-20 min). Atualize a página em alguns minutos para ver o progresso.`,
+        message: result.completed 
+          ? `Sincronização completa! ${result.successCount} categorias encontradas.`
+          : `Progresso: ${result.processed}/${allTransactions.length} (${percentage}%)`,
+        progress: {
+          processed: result.processed,
+          total: allTransactions.length,
+          percentage,
+          successCount: result.successCount
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

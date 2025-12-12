@@ -176,6 +176,44 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_checkpoints: {
+        Row: {
+          id: string
+          last_processed_index: number | null
+          school_id: string
+          started_at: string | null
+          success_count: number | null
+          total_transactions: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          last_processed_index?: number | null
+          school_id: string
+          started_at?: string | null
+          success_count?: number | null
+          total_transactions?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          last_processed_index?: number | null
+          school_id?: string
+          started_at?: string | null
+          success_count?: number | null
+          total_transactions?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_checkpoints_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: true
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       synced_transactions: {
         Row: {
           amount: number
