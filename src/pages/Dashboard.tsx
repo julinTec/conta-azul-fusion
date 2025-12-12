@@ -280,7 +280,9 @@ export const Dashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold">
-            Dashboard Financeiro - {format(startDate, "MMMM 'de' yyyy", { locale: ptBR })}
+            Dashboard Financeiro - {startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear()
+              ? format(startDate, "MMMM 'de' yyyy", { locale: ptBR })
+              : `${format(startDate, "MMM", { locale: ptBR })} - ${format(endDate, "MMMM 'de' yyyy", { locale: ptBR })}`}
           </h2>
           <div className="flex items-center gap-2 mt-2 text-muted-foreground">
             <CalendarIcon className="h-4 w-4" />
