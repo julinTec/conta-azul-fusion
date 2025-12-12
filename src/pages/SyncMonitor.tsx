@@ -289,17 +289,61 @@ export const SyncMonitor = () => {
 
       } catch (err: any) {
         const errorMsg = err?.message || 'Erro desconhecido';
+        const errorLower = errorMsg.toLowerCase();
         
-        // Se for erro de rede/timeout, tratar graciosamente
-        if (errorMsg.includes('fetch') || errorMsg.includes('network') || errorMsg.includes('timeout')) {
-          addLog('warn', `⚠ Erro de conexão: ${errorMsg}`);
-          addLog('info', 'Tentando novamente em 10 segundos...');
+        // Detectar erros de rede/timeout de forma abrangente
+        const isNetworkError = 
+          errorLower.includes('fetch') || 
+          errorLower.includes('network') || 
+          errorLower.includes('timeout') ||
+          errorLower.includes('failed to send') ||
+          errorLower.includes('edge function') ||
+          errorLower.includes('aborted') ||
+          errorLower.includes('connection') ||
+          errorLower.includes('504') ||
+          errorLower.includes('502') ||
+          errorLower.includes('gateway');
+        
+        if (isNetworkError) {
+          addLog('warn', `⚠ Conexão perdida: ${errorMsg}`);
+          addLog('info', '🔍 Verificando progresso salvo...');
+          
+          // Verificar checkpoint para obter progresso real
+          try {
+            const { data: checkpoint } = await supabase
+              .from('sync_checkpoints')
+              .select('*')
+              .eq('school_id', school.id)
+              .maybeSingle();
+            
+            if (checkpoint) {
+              const checkpointProgress = Math.round(
+                (checkpoint.last_processed_index / checkpoint.total_transactions) * 100
+              );
+              addLog('success', `✓ Checkpoint: ${checkpoint.last_processed_index}/${checkpoint.total_transactions} (${checkpointProgress}%)`);
+              setProgress({
+                processed: checkpoint.last_processed_index,
+                total: checkpoint.total_transactions,
+                percentage: checkpointProgress,
+                successCount: checkpoint.success_count || 0
+              });
+            }
+            
+            // Atualizar estatísticas do banco
+            await checkDbStats();
+            addLog('info', `📊 Stats: ${dbStats.total} total | ${dbStats.enriched} enriquecidas | ${dbStats.pending} pendentes`);
+            
+          } catch (checkError) {
+            addLog('warn', '⚠ Não foi possível verificar checkpoint');
+          }
+          
+          addLog('info', '⏳ Continuando em 10 segundos...');
           await sleep(10000);
           retryCount++;
           continue;
         }
         
-        // Erro real
+        // Erro real não relacionado a rede
         addLog('error', `✖ Erro: ${errorMsg}`);
         setStatus('error');
         toast.error(`Erro na sincronização: ${errorMsg}`);
