@@ -13,22 +13,19 @@ const corsHeaders = {
 
 const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
 
-// Tipos para diagnóstico detalhado
-interface CategoryResult {
-  category: string | null;
-  reason: 'success' | 'rate_limit' | 'http_error' | 'no_rateio' | 'empty_categoria' | 'network_error' | 'retry_exhausted';
-  httpStatus?: number;
-}
-
-// Busca categoria com retry e diagnóstico detalhado
+// Busca categoria com retry INFINITO para rate limits
 async function fetchCategoryForTransaction(
   parcelaId: string, 
-  accessToken: string,
-  maxRetries: number = 3
-): Promise<CategoryResult> {
+  accessToken: string
+): Promise<{ category: string | null; reason: string }> {
   const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
   
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  let attempt = 0;
+  const maxNonRateLimitRetries = 3;
+  
+  while (true) {
+    attempt++;
+    
     try {
       const response = await fetch(url, {
         headers: {
@@ -38,31 +35,28 @@ async function fetchCategoryForTransaction(
         },
       });
       
-      // Rate limit - esperar e tentar novamente
+      // Rate limit - esperar e tentar novamente SEMPRE (sem limite)
       if (response.status === 429) {
-        if (attempt < maxRetries) {
-          const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000); // 2s, 4s, 5s max
-          console.log(`[FETCH] Rate limit hit for ${parcelaId}, waiting ${backoffMs}ms (attempt ${attempt}/${maxRetries})`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-          continue;
-        }
-        return { category: null, reason: 'rate_limit', httpStatus: 429 };
+        const backoffMs = 3000; // 3 segundos fixo para rate limit
+        console.log(`[FETCH] Rate limit for ${parcelaId}, waiting 3s (attempt ${attempt})...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue; // Retry infinito para rate limits
       }
       
-      // Erro de servidor - retry com backoff
+      // Erro de servidor - retry limitado
       if (response.status >= 500) {
-        if (attempt < maxRetries) {
-          const backoffMs = Math.min(500 * Math.pow(2, attempt), 3000);
+        if (attempt < maxNonRateLimitRetries) {
+          const backoffMs = 1000 * attempt;
           console.log(`[FETCH] Server error ${response.status} for ${parcelaId}, retrying in ${backoffMs}ms`);
           await new Promise(resolve => setTimeout(resolve, backoffMs));
           continue;
         }
-        return { category: null, reason: 'http_error', httpStatus: response.status };
+        return { category: null, reason: 'http_error' };
       }
       
-      // Outros erros HTTP
+      // Outros erros HTTP - não retry
       if (!response.ok) {
-        return { category: null, reason: 'http_error', httpStatus: response.status };
+        return { category: null, reason: 'http_error' };
       }
       
       const data = await response.json();
@@ -81,7 +75,7 @@ async function fetchCategoryForTransaction(
       return { category: categoria, reason: 'success' };
       
     } catch (error) {
-      if (attempt < maxRetries) {
+      if (attempt < maxNonRateLimitRetries) {
         const backoffMs = 500 * attempt;
         await new Promise(resolve => setTimeout(resolve, backoffMs));
         continue;
@@ -89,66 +83,119 @@ async function fetchCategoryForTransaction(
       return { category: null, reason: 'network_error' };
     }
   }
-  
-  return { category: null, reason: 'retry_exhausted' };
 }
 
-// Enriquece transações com diagnóstico completo
+// Enriquece transações SEQUENCIALMENTE com salvamento incremental
 async function enrichTransactionsWithCategories(
   transactions: any[], 
-  accessToken: string
+  accessToken: string,
+  supabaseClient: any
 ): Promise<any[]> {
-  const batchSize = 10;
-  const delayMs = 200; // Aumentado ligeiramente para evitar rate limits
+  // Configurações ultra-conservadoras
+  let currentDelay = 300;  // Delay adaptativo inicial
+  const minDelay = 300;    // Mínimo 300ms entre requests
+  const maxDelay = 5000;   // Máximo 5s em caso de rate limits
+  const saveEvery = 50;    // Salvar a cada 50 transações
   
-  console.log(`[ENRICH] Starting enrichment of ${transactions.length} transactions...`);
+  let lastSavedIndex = 0;
+  const startTime = Date.now();
   
-  // Métricas detalhadas
+  // Métricas
   const metrics = {
     success: 0,
-    rate_limit: 0,
-    http_error: 0,
     no_rateio: 0,
     empty_categoria: 0,
+    http_error: 0,
     network_error: 0,
-    retry_exhausted: 0,
   };
   
-  for (let i = 0; i < transactions.length; i += batchSize) {
-    const batch = transactions.slice(i, i + batchSize);
+  console.log(`[ENRICH] === STARTING SEQUENTIAL ENRICHMENT ===`);
+  console.log(`[ENRICH] Total transactions: ${transactions.length}`);
+  console.log(`[ENRICH] Initial delay: ${currentDelay}ms`);
+  console.log(`[ENRICH] Saving every: ${saveEvery} transactions`);
+  console.log(`[ENRICH] Estimated time: ${Math.ceil((transactions.length * currentDelay) / 60000)} minutes`);
+  
+  for (let i = 0; i < transactions.length; i++) {
+    const tx = transactions[i];
+    const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
     
-    await Promise.all(batch.map(async (tx) => {
-      const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
-      const result = await fetchCategoryForTransaction(parcelaId, accessToken);
-      
-      metrics[result.reason]++;
-      
-      if (result.category) {
-        tx.category_name = result.category;
+    // Buscar categoria (com retry infinito para rate limits)
+    const result = await fetchCategoryForTransaction(parcelaId, accessToken);
+    
+    // Atualizar métricas
+    if (result.reason === 'success') {
+      metrics.success++;
+      tx.category_name = result.category;
+      // Reduzir delay gradualmente quando sucesso
+      currentDelay = Math.max(currentDelay - 10, minDelay);
+    } else {
+      metrics[result.reason as keyof typeof metrics]++;
+      // Se tivemos problemas, aumentar delay um pouco
+      if (result.reason === 'http_error' || result.reason === 'network_error') {
+        currentDelay = Math.min(currentDelay + 100, maxDelay);
       }
-    }));
-    
-    // Log a cada 100 transações
-    if ((i + batchSize) % 100 === 0 || i + batchSize >= transactions.length) {
-      console.log(`[ENRICH] Progress: ${Math.min(i + batchSize, transactions.length)}/${transactions.length} | success: ${metrics.success}, no_rateio: ${metrics.no_rateio}, rate_limit: ${metrics.rate_limit}`);
     }
     
-    // Delay entre lotes
-    if (i + batchSize < transactions.length) {
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+    // Salvamento incremental a cada N transações
+    if ((i + 1) % saveEvery === 0) {
+      const batchToSave = transactions.slice(lastSavedIndex, i + 1);
+      const { error } = await supabaseClient
+        .from('synced_transactions')
+        .upsert(batchToSave, { onConflict: 'external_id' });
+      
+      if (error) {
+        console.error(`[ENRICH] Partial save error at ${i + 1}:`, error.message);
+      } else {
+        console.log(`[ENRICH] ✓ SAVED ${i + 1}/${transactions.length} | success: ${metrics.success} | delay: ${currentDelay}ms`);
+      }
+      lastSavedIndex = i + 1;
+    }
+    
+    // Log de progresso detalhado a cada 20 transações
+    if ((i + 1) % 20 === 0) {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const avgTimePerTx = elapsed / (i + 1);
+      const remaining = transactions.length - i - 1;
+      const estimatedRemaining = Math.ceil((remaining * avgTimePerTx) / 60);
+      
+      console.log(`[ENRICH] Progress: ${i + 1}/${transactions.length} (${Math.round((i + 1) / transactions.length * 100)}%) | ~${estimatedRemaining}min remaining`);
+    }
+    
+    // Delay antes da próxima transação (não aplicar após última)
+    if (i < transactions.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, currentDelay));
     }
   }
   
-  // Log final com todas as métricas
-  console.log(`[ENRICH] === FINAL METRICS ===`);
-  console.log(`[ENRICH] Total: ${transactions.length}`);
-  console.log(`[ENRICH] Success (with category): ${metrics.success}`);
-  console.log(`[ENRICH] No rateio (uncategorized in CA): ${metrics.no_rateio}`);
+  // Salvar transações restantes (que não completaram um lote de 50)
+  if (lastSavedIndex < transactions.length) {
+    const finalBatch = transactions.slice(lastSavedIndex);
+    const { error } = await supabaseClient
+      .from('synced_transactions')
+      .upsert(finalBatch, { onConflict: 'external_id' });
+    
+    if (error) {
+      console.error('[ENRICH] Final save error:', error.message);
+    } else {
+      console.log(`[ENRICH] ✓ FINAL SAVE: ${finalBatch.length} transactions`);
+    }
+  }
+  
+  // Log final completo
+  const totalTime = Math.round((Date.now() - startTime) / 1000);
+  const minutes = Math.floor(totalTime / 60);
+  const seconds = totalTime % 60;
+  
+  console.log(`[ENRICH] ========================================`);
+  console.log(`[ENRICH] === ENRICHMENT COMPLETE ===`);
+  console.log(`[ENRICH] Total time: ${minutes}m ${seconds}s`);
+  console.log(`[ENRICH] Total transactions: ${transactions.length}`);
+  console.log(`[ENRICH] With real category: ${metrics.success} (${Math.round(metrics.success / transactions.length * 100)}%)`);
+  console.log(`[ENRICH] Without category (no rateio in CA): ${metrics.no_rateio}`);
   console.log(`[ENRICH] Empty categoria: ${metrics.empty_categoria}`);
-  console.log(`[ENRICH] Rate limit errors: ${metrics.rate_limit}`);
   console.log(`[ENRICH] HTTP errors: ${metrics.http_error}`);
   console.log(`[ENRICH] Network errors: ${metrics.network_error}`);
-  console.log(`[ENRICH] Retry exhausted: ${metrics.retry_exhausted}`);
+  console.log(`[ENRICH] ========================================`);
   
   return transactions;
 }
@@ -389,22 +436,15 @@ serve(async (req) => {
 
     console.log(`[SYNC] Phase 1 complete: ${allTransactions.length} transactions saved with fallback categories`);
 
-    // FASE 2: Enriquecer com categorias reais em BACKGROUND
+    // FASE 2: Enriquecer com categorias reais em BACKGROUND (sequencial + salvamento incremental)
     const backgroundEnrichment = async () => {
       try {
-        console.log('[BACKGROUND] Starting category enrichment...');
-        const enrichedTransactions = await enrichTransactionsWithCategories(allTransactions, accessToken);
+        console.log('[BACKGROUND] Starting ULTRA-ROBUST sequential category enrichment...');
+        console.log('[BACKGROUND] This will take approximately 15-20 minutes for full accuracy.');
         
-        // Salvar transações enriquecidas
-        const { error: enrichError } = await supabaseClient
-          .from('synced_transactions')
-          .upsert(enrichedTransactions, { onConflict: 'external_id' });
-
-        if (enrichError) {
-          console.error('[BACKGROUND] Enrichment upsert error:', enrichError);
-        } else {
-          console.log(`[BACKGROUND] Complete: ${enrichedTransactions.length} transactions enriched with real categories`);
-        }
+        await enrichTransactionsWithCategories(allTransactions, accessToken, supabaseClient);
+        
+        console.log('[BACKGROUND] === ENRICHMENT TASK FINISHED ===');
       } catch (err) {
         console.error('[BACKGROUND] Enrichment failed:', err);
       }
@@ -418,7 +458,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         count: allTransactions.length,
-        message: `Sincronização iniciada! ${allTransactions.length} transações salvas. Categorias sendo processadas em segundo plano.`,
+        message: `Sincronização iniciada! ${allTransactions.length} transações salvas. Categorias estão sendo enriquecidas em segundo plano (15-20 min). Atualize a página em alguns minutos para ver o progresso.`,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
