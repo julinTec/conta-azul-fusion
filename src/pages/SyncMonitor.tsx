@@ -35,6 +35,9 @@ interface SyncProgress {
   total: number;
   percentage: number;
   successCount: number;
+  totalInDb?: number;
+  alreadyEnriched?: number;
+  pendingCount?: number;
 }
 
 type SyncStatus = 'idle' | 'syncing' | 'paused' | 'completed' | 'error';
@@ -43,6 +46,7 @@ export const SyncMonitor = () => {
   const { school } = useSchool();
   const [status, setStatus] = useState<SyncStatus>('idle');
   const [progress, setProgress] = useState<SyncProgress>({ processed: 0, total: 0, percentage: 0, successCount: 0 });
+  const [dbStats, setDbStats] = useState<{ total: number; enriched: number; pending: number }>({ total: 0, enriched: 0, pending: 0 });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [autoScroll, setAutoScroll] = useState(true);
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -57,9 +61,10 @@ export const SyncMonitor = () => {
     }
   }, [logs, autoScroll]);
 
-  // Check for existing checkpoint on mount
+  // Check for existing checkpoint and DB stats on mount
   useEffect(() => {
     if (school?.id) {
+      checkDbStats();
       checkExistingCheckpoint();
     }
   }, [school?.id]);
@@ -67,6 +72,35 @@ export const SyncMonitor = () => {
   const addLog = (type: LogEntry['type'], message: string) => {
     const timestamp = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setLogs(prev => [...prev, { timestamp, type, message }]);
+  };
+
+  const checkDbStats = async () => {
+    if (!school?.id) return;
+
+    // Total transactions
+    const { count: total } = await supabase
+      .from('synced_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', school.id);
+
+    // Pending (with fallback category)
+    const { count: pending } = await supabase
+      .from('synced_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', school.id)
+      .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+
+    const enriched = (total || 0) - (pending || 0);
+    
+    setDbStats({
+      total: total || 0,
+      enriched,
+      pending: pending || 0
+    });
+
+    if (total && total > 0) {
+      addLog('info', `📊 Estatísticas do banco: ${total} total | ${enriched} com categoria | ${pending} pendentes`);
+    }
   };
 
   const checkExistingCheckpoint = async () => {
@@ -88,8 +122,10 @@ export const SyncMonitor = () => {
         successCount: checkpoint.success_count || 0
       });
       setStatus('paused');
-      addLog('info', `Checkpoint encontrado: ${checkpoint.last_processed_index}/${checkpoint.total_transactions} transações processadas`);
+      addLog('info', `Checkpoint encontrado: ${checkpoint.last_processed_index}/${checkpoint.total_transactions} transações do lote atual`);
       addLog('warn', 'Sincronização interrompida anteriormente. Clique em "Continuar" para retomar.');
+    } else if (dbStats.pending > 0) {
+      addLog('warn', `⚠️ ${dbStats.pending} transações sem categoria real. Clique em "Enriquecer" para processar.`);
     }
   };
 
@@ -109,11 +145,11 @@ export const SyncMonitor = () => {
       setStartTime(new Date());
       addLog('info', `▶ Iniciando sincronização para escola: ${school.name}`);
     } else {
-      addLog('info', '▶ Retomando sincronização...');
+      addLog('info', '▶ Retomando enriquecimento de categorias...');
     }
 
     let retryCount = 0;
-    const maxRetries = 50; // Limite de tentativas para evitar loop infinito
+    const maxRetries = 100; // Aumentado para suportar mais transações
 
     while (retryCount < maxRetries && !syncAbortRef.current) {
       try {
@@ -136,6 +172,9 @@ export const SyncMonitor = () => {
             // Aguardar um pouco antes de verificar o checkpoint
             await sleep(2000);
             
+            // Atualizar stats do banco
+            await checkDbStats();
+            
             // Buscar checkpoint real do banco
             const { data: checkpoint } = await supabase
               .from('sync_checkpoints')
@@ -152,13 +191,25 @@ export const SyncMonitor = () => {
                 successCount: checkpoint.success_count || 0
               });
               
-              addLog('success', `✓ Checkpoint encontrado: ${checkpoint.last_processed_index}/${checkpoint.total_transactions} (${pct}%)`);
+              addLog('success', `✓ Checkpoint: ${checkpoint.last_processed_index}/${checkpoint.total_transactions} do lote atual (${pct}%)`);
               
-              // Verificar se já completou
+              // Verificar se o lote atual completou
               if (checkpoint.last_processed_index >= checkpoint.total_transactions) {
-                addLog('success', '🎉 Sincronização completa!');
-                setStatus('completed');
-                return;
+                // Verificar se ainda há pendentes no banco
+                const { count: stillPending } = await supabase
+                  .from('synced_transactions')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('school_id', school.id)
+                  .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+                
+                if (stillPending && stillPending > 0) {
+                  addLog('info', `📦 Lote completo. Ainda há ${stillPending} transações pendentes.`);
+                } else {
+                  addLog('success', '🎉 Sincronização 100% completa! Todas as transações têm categorias.');
+                  setStatus('completed');
+                  await checkDbStats();
+                  return;
+                }
               }
 
               addLog('info', '⏳ Continuando em 5 segundos...');
@@ -167,7 +218,21 @@ export const SyncMonitor = () => {
               retryCount++;
               continue; // Continuar o loop
             } else {
-              addLog('warn', 'Nenhum checkpoint encontrado. Iniciando nova sincronização...');
+              // Sem checkpoint, verificar se há pendentes
+              const { count: pending } = await supabase
+                .from('synced_transactions')
+                .select('*', { count: 'exact', head: true })
+                .eq('school_id', school.id)
+                .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+              
+              if (!pending || pending === 0) {
+                addLog('success', '🎉 Sincronização completa! Todas as transações têm categorias.');
+                setStatus('completed');
+                await checkDbStats();
+                return;
+              }
+              
+              addLog('info', `📦 ${pending} transações pendentes encontradas. Continuando...`);
               await sleep(3000);
               retryCount++;
               continue;
@@ -183,20 +248,35 @@ export const SyncMonitor = () => {
           
           if (respProgress) {
             setProgress(respProgress);
-            addLog('success', `✓ Progresso: ${respProgress.processed}/${respProgress.total} (${respProgress.percentage}%)`);
+            
+            const pendingInfo = respProgress.pendingCount !== undefined 
+              ? ` | ${respProgress.pendingCount} pendentes restantes` 
+              : '';
+            
+            addLog('success', `✓ Progresso: ${respProgress.processed}/${respProgress.total} (${respProgress.percentage}%)${pendingInfo}`);
           }
 
+          // Atualizar stats
+          await checkDbStats();
+
           if (completed) {
+            // Verificar se realmente completou (verificar pendentes no banco)
+            const { count: stillPending } = await supabase
+              .from('synced_transactions')
+              .select('*', { count: 'exact', head: true })
+              .eq('school_id', school.id)
+              .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+            
+            if (stillPending && stillPending > 0) {
+              addLog('info', `📦 Lote completo. Ainda há ${stillPending} transações pendentes.`);
+              await sleep(3000);
+              retryCount++;
+              continue;
+            }
+            
             addLog('success', `🎉 ${message || 'Sincronização completa!'}`);
             setStatus('completed');
             toast.success("Sincronização concluída!");
-            
-            // Limpar checkpoint
-            await supabase
-              .from('sync_checkpoints')
-              .delete()
-              .eq('school_id', school.id);
-            
             return;
           } else {
             // Ainda não completou, continuar
@@ -303,8 +383,12 @@ export const SyncMonitor = () => {
     return `${rate.toFixed(1)}/s`;
   };
 
-  const categorySuccessRate = progress.total > 0 
+  const categorySuccessRate = progress.processed > 0 
     ? Math.round((progress.successCount / progress.processed) * 100) || 0
+    : 0;
+
+  const dbEnrichmentRate = dbStats.total > 0 
+    ? Math.round((dbStats.enriched / dbStats.total) * 100)
     : 0;
 
   return (
@@ -319,30 +403,70 @@ export const SyncMonitor = () => {
           {getStatusBadge()}
         </div>
 
-        {/* Progress Bar */}
+        {/* DB Stats Cards - Real totals */}
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="border-2 border-primary/20">
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Total no Banco</span>
+              </div>
+              <p className="text-3xl font-bold mt-1 text-primary">
+                {dbStats.total.toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-green-500/20">
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">Com Categoria Real</span>
+              </div>
+              <p className="text-3xl font-bold mt-1 text-green-500">
+                {dbStats.enriched.toLocaleString()}
+                <span className="text-sm font-normal text-muted-foreground ml-2">({dbEnrichmentRate}%)</span>
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-2 border-yellow-500/20">
+            <CardContent className="pt-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                <span className="text-sm font-medium">Pendentes</span>
+              </div>
+              <p className="text-3xl font-bold mt-1 text-yellow-500">
+                {dbStats.pending.toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Progress Bar - Current batch */}
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span>Progresso</span>
+                <span>Progresso do Lote Atual</span>
                 <span className="font-medium">{progress.percentage}%</span>
               </div>
               <Progress value={progress.percentage} className="h-4" />
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{progress.processed.toLocaleString()} processadas</span>
-                <span>{progress.total.toLocaleString()} total</span>
+                <span>{progress.processed.toLocaleString()} processadas neste lote</span>
+                <span>{progress.total.toLocaleString()} no lote</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
+        {/* Current batch Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Processadas</span>
+                <span className="text-sm text-muted-foreground">Lote Atual</span>
               </div>
               <p className="text-2xl font-bold mt-1">
                 {progress.processed.toLocaleString()}
@@ -355,7 +479,7 @@ export const SyncMonitor = () => {
             <CardContent className="pt-4">
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Categorias</span>
+                <span className="text-sm text-muted-foreground">Categorias (lote)</span>
               </div>
               <p className="text-2xl font-bold mt-1">
                 {progress.successCount.toLocaleString()}
@@ -436,10 +560,18 @@ export const SyncMonitor = () => {
         {/* Controls */}
         <div className="flex gap-4">
           {status === 'idle' || status === 'error' ? (
-            <Button onClick={() => handleSync(false)} className="gap-2">
-              <Play className="h-4 w-4" />
-              Iniciar Sincronização
-            </Button>
+            <>
+              {dbStats.pending > 0 ? (
+                <Button onClick={() => handleSync(true)} className="gap-2 bg-yellow-600 hover:bg-yellow-700">
+                  <Tag className="h-4 w-4" />
+                  Enriquecer {dbStats.pending.toLocaleString()} Pendentes
+                </Button>
+              ) : null}
+              <Button onClick={() => handleSync(false)} variant={dbStats.pending > 0 ? "outline" : "default"} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Nova Sincronização Completa
+              </Button>
+            </>
           ) : status === 'syncing' ? (
             <Button onClick={handlePause} variant="outline" className="gap-2">
               <Pause className="h-4 w-4" />
@@ -453,11 +585,24 @@ export const SyncMonitor = () => {
           ) : null}
           
           {status === 'completed' && (
-            <Button onClick={() => handleSync(false)} variant="outline" className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Sincronizar Novamente
-            </Button>
+            <>
+              {dbStats.pending > 0 ? (
+                <Button onClick={() => handleSync(true)} className="gap-2 bg-yellow-600 hover:bg-yellow-700">
+                  <Tag className="h-4 w-4" />
+                  Enriquecer {dbStats.pending.toLocaleString()} Pendentes
+                </Button>
+              ) : null}
+              <Button onClick={() => handleSync(false)} variant="outline" className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Sincronizar Novamente
+              </Button>
+            </>
           )}
+          
+          <Button onClick={checkDbStats} variant="ghost" className="gap-2">
+            <Database className="h-4 w-4" />
+            Atualizar Stats
+          </Button>
         </div>
       </div>
     </Layout>

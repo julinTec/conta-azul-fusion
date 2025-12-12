@@ -83,14 +83,16 @@ async function fetchCategoryForTransaction(
   return { category: null, reason: 'max_retries' };
 }
 
-// Enriquece transações com checkpoint para sincronização resumível
-async function enrichTransactionsWithCheckpoint(
-  transactions: any[], 
+// Enriquece transações PENDENTES (com categoria fallback)
+async function enrichPendingTransactions(
+  pendingTx: any[], 
   accessToken: string,
   supabaseClient: any,
   schoolId: string,
+  totalInDb: number,
+  alreadyEnriched: number,
   startIndex: number = 0
-): Promise<{ processed: number; successCount: number; completed: boolean }> {
+): Promise<{ processed: number; successCount: number; completed: boolean; totalProcessed: number }> {
   const saveEvery = 50;
   const delayMs = 200;
   
@@ -98,10 +100,10 @@ async function enrichTransactionsWithCheckpoint(
   let processed = startIndex;
   const startTime = Date.now();
   
-  console.log(`[ENRICH] Starting from index ${startIndex} of ${transactions.length}`);
+  console.log(`[ENRICH] Starting from index ${startIndex} of ${pendingTx.length} pending (${totalInDb} total in DB)`);
   
-  for (let i = startIndex; i < transactions.length; i++) {
-    const tx = transactions[i];
+  for (let i = startIndex; i < pendingTx.length; i++) {
+    const tx = pendingTx[i];
     const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
     
     // Buscar categoria
@@ -110,66 +112,82 @@ async function enrichTransactionsWithCheckpoint(
     if (result.reason === 'success' && result.category) {
       tx.category_name = result.category;
       successCount++;
+      
+      // Atualizar imediatamente no banco
+      await supabaseClient
+        .from('synced_transactions')
+        .update({ category_name: result.category })
+        .eq('external_id', tx.external_id);
     }
     
     processed = i + 1;
     
-    // Salvamento incremental a cada N transações
+    // Atualizar checkpoint periodicamente
     if (processed % saveEvery === 0) {
-      const batchToSave = transactions.slice(i - saveEvery + 1, i + 1);
-      await supabaseClient
-        .from('synced_transactions')
-        .upsert(batchToSave, { onConflict: 'external_id' });
+      const totalProcessedSoFar = alreadyEnriched + processed;
       
-      // Atualizar checkpoint
       await supabaseClient
         .from('sync_checkpoints')
         .upsert({
           school_id: schoolId,
           last_processed_index: processed,
-          total_transactions: transactions.length,
+          total_transactions: pendingTx.length,
           success_count: successCount,
           updated_at: new Date().toISOString()
         }, { onConflict: 'school_id' });
       
-      console.log(`[ENRICH] Saved ${processed}/${transactions.length} (${Math.round(processed / transactions.length * 100)}%)`);
+      console.log(`[ENRICH] Saved ${processed}/${pendingTx.length} pending (${totalProcessedSoFar}/${totalInDb} total)`);
     }
     
     // Log de progresso
     if (processed % 100 === 0) {
       const elapsed = (Date.now() - startTime) / 1000;
       const rate = (processed - startIndex) / elapsed;
-      const remaining = transactions.length - processed;
+      const remaining = pendingTx.length - processed;
       const estimatedMin = Math.ceil(remaining / rate / 60);
-      console.log(`[ENRICH] Progress: ${processed}/${transactions.length} | ~${estimatedMin}min remaining`);
+      console.log(`[ENRICH] Progress: ${processed}/${pendingTx.length} pending | ~${estimatedMin}min remaining`);
     }
     
     // Delay entre requests
-    if (i < transactions.length - 1) {
+    if (i < pendingTx.length - 1) {
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
   
-  // Salvar transações restantes
-  const remainder = processed % saveEvery;
-  if (remainder > 0) {
-    const finalBatch = transactions.slice(processed - remainder, processed);
-    await supabaseClient
-      .from('synced_transactions')
-      .upsert(finalBatch, { onConflict: 'external_id' });
-  }
-  
-  // Verificar se completou
-  const completed = processed >= transactions.length;
+  const totalProcessed = alreadyEnriched + processed;
+  const completed = processed >= pendingTx.length;
   
   if (completed) {
-    // Deletar checkpoint quando completar
+    // Verificar se ainda há pendentes (pode ter havido novos dados)
+    const { count: stillPending } = await supabaseClient
+      .from('synced_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', schoolId)
+      .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+    
+    if (stillPending && stillPending > 0) {
+      console.log(`[ENRICH] Found ${stillPending} more pending transactions`);
+      // Não deletar checkpoint se ainda há pendentes
+      await supabaseClient
+        .from('sync_checkpoints')
+        .upsert({
+          school_id: schoolId,
+          last_processed_index: 0,
+          total_transactions: stillPending,
+          success_count: 0,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'school_id' });
+      
+      return { processed, successCount, completed: false, totalProcessed };
+    }
+    
+    // Realmente completou - deletar checkpoint
     await supabaseClient
       .from('sync_checkpoints')
       .delete()
       .eq('school_id', schoolId);
     
-    console.log(`[ENRICH] === COMPLETED === ${successCount}/${transactions.length} with categories`);
+    console.log(`[ENRICH] === FULLY COMPLETED === ${successCount} categories added this batch, ${totalProcessed} total in DB`);
   } else {
     // Atualizar checkpoint final
     await supabaseClient
@@ -177,13 +195,13 @@ async function enrichTransactionsWithCheckpoint(
       .upsert({
         school_id: schoolId,
         last_processed_index: processed,
-        total_transactions: transactions.length,
+        total_transactions: pendingTx.length,
         success_count: successCount,
         updated_at: new Date().toISOString()
       }, { onConflict: 'school_id' });
   }
   
-  return { processed, successCount, completed };
+  return { processed, successCount, completed, totalProcessed };
 }
 
 serve(async (req) => {
@@ -234,6 +252,22 @@ serve(async (req) => {
 
     console.log('[SYNC] Starting sync for school_id:', targetSchoolId);
 
+    // Contar transações no banco e quantas ainda precisam de enriquecimento
+    const { count: totalInDb } = await supabaseClient
+      .from('synced_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', targetSchoolId);
+
+    const { count: pendingCount } = await supabaseClient
+      .from('synced_transactions')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_id', targetSchoolId)
+      .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+
+    const alreadyEnriched = (totalInDb || 0) - (pendingCount || 0);
+
+    console.log(`[SYNC] DB stats: ${totalInDb} total, ${alreadyEnriched} enriched, ${pendingCount} pending`);
+
     // Verificar se há checkpoint existente
     const { data: existingCheckpoint } = await supabaseClient
       .from('sync_checkpoints')
@@ -241,14 +275,20 @@ serve(async (req) => {
       .eq('school_id', targetSchoolId)
       .maybeSingle();
 
-    // Se resume_only=true e não há checkpoint, retornar que já completou
-    if (resume_only && !existingCheckpoint) {
+    // Se resume_only=true e não há pendentes nem checkpoint, retornar que já completou
+    if (resume_only && !existingCheckpoint && pendingCount === 0) {
       return new Response(
         JSON.stringify({
           success: true,
           completed: true,
-          message: 'Sincronização já foi completada anteriormente.',
-          progress: { processed: 0, total: 0, percentage: 100, successCount: 0 }
+          message: 'Sincronização já foi completada. Todas as transações têm categorias.',
+          progress: { 
+            processed: totalInDb || 0, 
+            total: totalInDb || 0, 
+            percentage: 100, 
+            successCount: alreadyEnriched,
+            pendingCount: 0
+          }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -316,58 +356,108 @@ serve(async (req) => {
         .eq('id', config.id);
     }
 
-    // Se há checkpoint existente, continuar de onde parou
-    if (existingCheckpoint) {
-      console.log('[SYNC] Resuming from checkpoint:', existingCheckpoint.last_processed_index);
+    // Se há transações pendentes de enriquecimento, processar elas primeiro
+    if (pendingCount && pendingCount > 0) {
+      console.log(`[SYNC] Processing ${pendingCount} pending transactions for enrichment`);
       
-      // Buscar transações existentes
-      const { data: existingTx } = await supabaseClient
+      // Buscar transações pendentes
+      const { data: pendingTx } = await supabaseClient
         .from('synced_transactions')
         .select('*')
         .eq('school_id', targetSchoolId)
+        .in('category_name', ['Outras Receitas', 'Outras Despesas'])
         .order('external_id');
       
-      if (!existingTx || existingTx.length === 0) {
-        // Checkpoint órfão, limpar
-        await supabaseClient
-          .from('sync_checkpoints')
-          .delete()
-          .eq('school_id', targetSchoolId);
+      if (!pendingTx || pendingTx.length === 0) {
+        // Sem pendentes, verificar se há checkpoint órfão
+        if (existingCheckpoint) {
+          await supabaseClient
+            .from('sync_checkpoints')
+            .delete()
+            .eq('school_id', targetSchoolId);
+        }
         
         return new Response(
           JSON.stringify({
             success: true,
             completed: true,
-            message: 'Checkpoint limpo. Por favor, inicie nova sincronização.',
-            progress: { processed: 0, total: 0, percentage: 100, successCount: 0 }
+            message: 'Todas as transações já foram enriquecidas com categorias.',
+            progress: { 
+              processed: totalInDb || 0, 
+              total: totalInDb || 0, 
+              percentage: 100, 
+              successCount: alreadyEnriched,
+              pendingCount: 0
+            }
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Processar a partir do checkpoint
-      const result = await enrichTransactionsWithCheckpoint(
-        existingTx,
+      // Determinar índice inicial
+      const startIndex = existingCheckpoint ? (existingCheckpoint.last_processed_index || 0) : 0;
+
+      // Criar/atualizar checkpoint
+      if (!existingCheckpoint) {
+        await supabaseClient
+          .from('sync_checkpoints')
+          .upsert({
+            school_id: targetSchoolId,
+            last_processed_index: 0,
+            total_transactions: pendingTx.length,
+            success_count: 0,
+            started_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'school_id' });
+      }
+
+      // Processar transações pendentes
+      const result = await enrichPendingTransactions(
+        pendingTx,
         accessToken,
         supabaseClient,
         targetSchoolId,
-        existingCheckpoint.last_processed_index
+        totalInDb || 0,
+        alreadyEnriched,
+        startIndex
       );
 
-      const percentage = Math.round((result.processed / existingTx.length) * 100);
+      const percentage = Math.round((result.processed / pendingTx.length) * 100);
 
       return new Response(
         JSON.stringify({
           success: true,
           completed: result.completed,
           message: result.completed 
-            ? `Sincronização completa! ${result.successCount} categorias encontradas.`
-            : `Progresso: ${result.processed}/${existingTx.length} (${percentage}%)`,
+            ? `✅ Enriquecimento completo! ${result.successCount} categorias adicionadas nesta sessão.`
+            : `⏳ Enriquecimento em progresso: ${result.processed}/${pendingTx.length} pendentes processadas`,
           progress: {
             processed: result.processed,
-            total: existingTx.length,
+            total: pendingTx.length,
             percentage,
-            successCount: result.successCount
+            successCount: result.successCount,
+            totalInDb: totalInDb || 0,
+            alreadyEnriched,
+            pendingCount: pendingTx.length - result.processed
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Se resume_only e não há pendentes, já está completo
+    if (resume_only) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          completed: true,
+          message: 'Sincronização completa. Todas as transações têm categorias reais.',
+          progress: { 
+            processed: totalInDb || 0, 
+            total: totalInDb || 0, 
+            percentage: 100, 
+            successCount: alreadyEnriched,
+            pendingCount: 0
           }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -473,7 +563,7 @@ serve(async (req) => {
 
     if (upsertError) throw upsertError;
 
-    // Criar checkpoint inicial
+    // Criar checkpoint inicial para enriquecimento
     await supabaseClient
       .from('sync_checkpoints')
       .upsert({
@@ -486,11 +576,13 @@ serve(async (req) => {
       }, { onConflict: 'school_id' });
 
     // Iniciar enriquecimento
-    const result = await enrichTransactionsWithCheckpoint(
+    const result = await enrichPendingTransactions(
       allTransactions,
       accessToken,
       supabaseClient,
       targetSchoolId,
+      allTransactions.length,
+      0,
       0
     );
 
@@ -508,7 +600,8 @@ serve(async (req) => {
           processed: result.processed,
           total: allTransactions.length,
           percentage,
-          successCount: result.successCount
+          successCount: result.successCount,
+          pendingCount: allTransactions.length - result.processed
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
