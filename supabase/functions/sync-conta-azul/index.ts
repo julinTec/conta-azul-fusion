@@ -13,61 +13,124 @@ const corsHeaders = {
 
 const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
 
-// Busca categoria real de uma transação via API de parcelas
-async function fetchCategoryForTransaction(
-  parcelaId: string, 
-  accessToken: string
-): Promise<string | null> {
-  try {
-    const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data?.evento?.rateio?.[0]?.nome_categoria || null;
-  } catch (error) {
-    console.error(`Error fetching category for ${parcelaId}:`, error);
-    return null;
-  }
+// Tipos para diagnóstico detalhado
+interface CategoryResult {
+  category: string | null;
+  reason: 'success' | 'rate_limit' | 'http_error' | 'no_rateio' | 'empty_categoria' | 'network_error' | 'retry_exhausted';
+  httpStatus?: number;
 }
 
-// Enriquece transações com categorias reais - OTIMIZADO: lotes de 10, delay de 150ms
+// Busca categoria com retry e diagnóstico detalhado
+async function fetchCategoryForTransaction(
+  parcelaId: string, 
+  accessToken: string,
+  maxRetries: number = 3
+): Promise<CategoryResult> {
+  const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+      
+      // Rate limit - esperar e tentar novamente
+      if (response.status === 429) {
+        if (attempt < maxRetries) {
+          const backoffMs = Math.min(1000 * Math.pow(2, attempt), 5000); // 2s, 4s, 5s max
+          console.log(`[FETCH] Rate limit hit for ${parcelaId}, waiting ${backoffMs}ms (attempt ${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+        return { category: null, reason: 'rate_limit', httpStatus: 429 };
+      }
+      
+      // Erro de servidor - retry com backoff
+      if (response.status >= 500) {
+        if (attempt < maxRetries) {
+          const backoffMs = Math.min(500 * Math.pow(2, attempt), 3000);
+          console.log(`[FETCH] Server error ${response.status} for ${parcelaId}, retrying in ${backoffMs}ms`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          continue;
+        }
+        return { category: null, reason: 'http_error', httpStatus: response.status };
+      }
+      
+      // Outros erros HTTP
+      if (!response.ok) {
+        return { category: null, reason: 'http_error', httpStatus: response.status };
+      }
+      
+      const data = await response.json();
+      const rateio = data?.evento?.rateio;
+      
+      // Transação sem rateio (não categorizada no Conta Azul)
+      if (!rateio || rateio.length === 0) {
+        return { category: null, reason: 'no_rateio' };
+      }
+      
+      const categoria = rateio[0]?.nome_categoria;
+      if (!categoria) {
+        return { category: null, reason: 'empty_categoria' };
+      }
+      
+      return { category: categoria, reason: 'success' };
+      
+    } catch (error) {
+      if (attempt < maxRetries) {
+        const backoffMs = 500 * attempt;
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      return { category: null, reason: 'network_error' };
+    }
+  }
+  
+  return { category: null, reason: 'retry_exhausted' };
+}
+
+// Enriquece transações com diagnóstico completo
 async function enrichTransactionsWithCategories(
   transactions: any[], 
   accessToken: string
 ): Promise<any[]> {
-  const batchSize = 10; // Aumentado de 5 para 10
-  const delayMs = 150; // Reduzido de 300ms para 150ms
+  const batchSize = 10;
+  const delayMs = 200; // Aumentado ligeiramente para evitar rate limits
   
   console.log(`[ENRICH] Starting enrichment of ${transactions.length} transactions...`);
-  let categoriesFound = 0;
-  let errors = 0;
+  
+  // Métricas detalhadas
+  const metrics = {
+    success: 0,
+    rate_limit: 0,
+    http_error: 0,
+    no_rateio: 0,
+    empty_categoria: 0,
+    network_error: 0,
+    retry_exhausted: 0,
+  };
   
   for (let i = 0; i < transactions.length; i += batchSize) {
     const batch = transactions.slice(i, i + batchSize);
     
     await Promise.all(batch.map(async (tx) => {
-      try {
-        const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
-        const categoria = await fetchCategoryForTransaction(parcelaId, accessToken);
-        
-        if (categoria) {
-          tx.category_name = categoria;
-          categoriesFound++;
-        }
-      } catch (err) {
-        errors++;
+      const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
+      const result = await fetchCategoryForTransaction(parcelaId, accessToken);
+      
+      metrics[result.reason]++;
+      
+      if (result.category) {
+        tx.category_name = result.category;
       }
     }));
     
     // Log a cada 100 transações
     if ((i + batchSize) % 100 === 0 || i + batchSize >= transactions.length) {
-      console.log(`[ENRICH] Progress: ${Math.min(i + batchSize, transactions.length)}/${transactions.length} (${categoriesFound} categories found, ${errors} errors)`);
+      console.log(`[ENRICH] Progress: ${Math.min(i + batchSize, transactions.length)}/${transactions.length} | success: ${metrics.success}, no_rateio: ${metrics.no_rateio}, rate_limit: ${metrics.rate_limit}`);
     }
     
     // Delay entre lotes
@@ -76,7 +139,17 @@ async function enrichTransactionsWithCategories(
     }
   }
   
-  console.log(`[ENRICH] Complete: ${categoriesFound}/${transactions.length} with real categories, ${errors} errors`);
+  // Log final com todas as métricas
+  console.log(`[ENRICH] === FINAL METRICS ===`);
+  console.log(`[ENRICH] Total: ${transactions.length}`);
+  console.log(`[ENRICH] Success (with category): ${metrics.success}`);
+  console.log(`[ENRICH] No rateio (uncategorized in CA): ${metrics.no_rateio}`);
+  console.log(`[ENRICH] Empty categoria: ${metrics.empty_categoria}`);
+  console.log(`[ENRICH] Rate limit errors: ${metrics.rate_limit}`);
+  console.log(`[ENRICH] HTTP errors: ${metrics.http_error}`);
+  console.log(`[ENRICH] Network errors: ${metrics.network_error}`);
+  console.log(`[ENRICH] Retry exhausted: ${metrics.retry_exhausted}`);
+  
   return transactions;
 }
 
