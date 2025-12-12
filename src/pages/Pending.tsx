@@ -77,7 +77,14 @@ export const Pending = () => {
     format(endOfMonth(now), 'yyyy-MM-dd')
   );
   
-  const currentMonthName = format(now, "MMMM 'de' yyyy", { locale: ptBR });
+  const getDisplayPeriod = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+      return format(start, "MMMM 'de' yyyy", { locale: ptBR });
+    }
+    return `${format(start, "MMM", { locale: ptBR })} - ${format(end, "MMMM 'de' yyyy", { locale: ptBR })}`;
+  };
 
   useEffect(() => {
     if (!school?.id) {
@@ -169,7 +176,7 @@ export const Pending = () => {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold">
-            Pendências - {currentMonthName}
+            Pendências - {getDisplayPeriod()}
           </h1>
         </div>
         <p className="text-xs text-muted-foreground italic">

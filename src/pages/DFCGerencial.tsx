@@ -133,7 +133,14 @@ export const DFCGerencial = () => {
     toast.success('Arquivo exportado com sucesso!');
   };
 
-  const currentMonthName = format(new Date(startDate), "MMMM 'de' yyyy", { locale: ptBR });
+  const getDisplayPeriod = () => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+      return format(start, "MMMM 'de' yyyy", { locale: ptBR });
+    }
+    return `${format(start, "MMM", { locale: ptBR })} - ${format(end, "MMMM 'de' yyyy", { locale: ptBR })}`;
+  };
 
   if (loading) {
     return (
@@ -148,7 +155,7 @@ export const DFCGerencial = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent capitalize">
-            DFC Gerencial - {currentMonthName}
+            DFC Gerencial - {getDisplayPeriod()}
           </h1>
           <p className="text-muted-foreground mt-1">
             Demonstração de Fluxo de Caixa agrupada por categorias do Conta Azul
