@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
+import { startOfMonth, endOfMonth, subMonths, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { DFCLevel1Item } from "@/components/DFCLevel1Item";
@@ -134,8 +134,8 @@ export const DFCGerencial = () => {
   };
 
   const getDisplayPeriod = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseISO(startDate);
+    const end = parseISO(endDate);
     if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
       return format(start, "MMMM 'de' yyyy", { locale: ptBR });
     }
