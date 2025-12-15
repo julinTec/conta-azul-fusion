@@ -8,6 +8,10 @@ const corsHeaders = {
 
 const START_DATE = "2025-04-01";
 const CONTA_AZUL_API_BASE = 'https://api-v2.contaazul.com';
+const MAX_ROUNDS = 30; // Limite de segurança para evitar loops infinitos
+const SELF_INVOKE_DELAY_MS = 30000; // 30 segundos entre rodadas
+const BATCH_SAVE_SIZE = 50; // Salvar a cada 50 transações
+const MAX_EXECUTION_TIME_MS = 140000; // 140 segundos (margem para timeout de 150s)
 
 type ContaAzulConfig = {
   id: string;
@@ -21,63 +25,204 @@ type ContaAzulConfig = {
   } | null;
 };
 
-// Busca categoria real de uma transação via API de parcelas
+type SyncCheckpoint = {
+  school_id: string;
+  last_processed_index: number;
+  total_transactions: number;
+  success_count: number;
+};
+
+// Busca categoria real de uma transação via API de parcelas com retry robusto
 async function fetchCategoryForTransaction(
   parcelaId: string, 
-  accessToken: string
-): Promise<string | null> {
-  try {
-    const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data?.evento?.rateio?.[0]?.nome_categoria || null;
-  } catch (error) {
-    console.error(`Error fetching category for ${parcelaId}:`, error);
-    return null;
-  }
-}
-
-// Enriquece transações com categorias reais em lotes de 5 com delay de 300ms
-async function enrichTransactionsWithCategories(
-  transactions: any[], 
-  accessToken: string
-): Promise<any[]> {
-  const batchSize = 5;
-  const delayMs = 300;
+  accessToken: string,
+  maxRetries = 5
+): Promise<{ category: string | null; reason: string }> {
+  let retryCount = 0;
+  let delayMs = 300;
   
-  console.log(`Enriching ${transactions.length} transactions with real categories...`);
-  let categoriesFound = 0;
-  
-  for (let i = 0; i < transactions.length; i += batchSize) {
-    const batch = transactions.slice(i, i + batchSize);
-    
-    await Promise.all(batch.map(async (tx) => {
-      // Extrair ID do external_id (formato: "receber_{id}" ou "pagar_{id}")
-      const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
-      const categoria = await fetchCategoryForTransaction(parcelaId, accessToken);
+  while (retryCount <= maxRetries) {
+    try {
+      const url = `${CONTA_AZUL_API_BASE}/v1/financeiro/eventos-financeiros/parcelas/${parcelaId}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
       
-      if (categoria) {
-        tx.category_name = categoria;
-        categoriesFound++;
+      if (response.status === 429) {
+        // Rate limit - aguardar e tentar novamente (retry infinito para 429)
+        console.log(`[Rate limit] Parcela ${parcelaId} - aguardando ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * 2, 5000); // Aumenta delay até 5s
+        retryCount++; // Para 429, continua tentando
+        if (retryCount > maxRetries) {
+          // Para rate limit, damos mais chances
+          retryCount = 0;
+          await new Promise(resolve => setTimeout(resolve, 3000)); // 3s extra
+        }
+        continue;
       }
-      // Se não encontrou, mantém o fallback já definido
-    }));
-    
-    // Delay entre lotes para não sobrecarregar a API
-    if (i + batchSize < transactions.length) {
+      
+      if (response.status >= 500) {
+        // Erro de servidor - retry com backoff
+        console.log(`[Server error ${response.status}] Parcela ${parcelaId} - retry ${retryCount + 1}`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs = Math.min(delayMs * 2, 5000);
+        retryCount++;
+        continue;
+      }
+      
+      if (!response.ok) {
+        return { category: null, reason: `http_error_${response.status}` };
+      }
+      
+      const data = await response.json();
+      const category = data?.evento?.rateio?.[0]?.nome_categoria || null;
+      
+      if (category) {
+        return { category, reason: 'success' };
+      }
+      return { category: null, reason: 'no_rateio' };
+      
+    } catch (error) {
+      console.error(`[Network error] Parcela ${parcelaId}:`, error);
       await new Promise(resolve => setTimeout(resolve, delayMs));
+      delayMs = Math.min(delayMs * 2, 5000);
+      retryCount++;
     }
   }
   
-  console.log(`Categories enrichment complete: ${categoriesFound}/${transactions.length} transactions with real categories`);
-  return transactions;
+  return { category: null, reason: 'retry_exhausted' };
+}
+
+// Enriquece transações pendentes de categoria de forma sequencial e robusta
+async function enrichPendingTransactions(
+  supabase: any,
+  schoolId: string,
+  accessToken: string,
+  startTime: number,
+  logId: string
+): Promise<{ enriched: number; total: number; completed: boolean }> {
+  // Buscar transações com categorias fallback (pendentes de enriquecimento)
+  const { data: pendingTx, error: pendingError } = await supabase
+    .from('synced_transactions')
+    .select('id, external_id, type, category_name')
+    .eq('school_id', schoolId)
+    .in('category_name', ['Outras Receitas', 'Outras Despesas'])
+    .order('transaction_date', { ascending: true });
+  
+  if (pendingError) {
+    console.error('Erro ao buscar transações pendentes:', pendingError);
+    return { enriched: 0, total: 0, completed: false };
+  }
+  
+  if (!pendingTx || pendingTx.length === 0) {
+    console.log('✅ Todas as transações já possuem categorias reais!');
+    return { enriched: 0, total: 0, completed: true };
+  }
+  
+  console.log(`📋 ${pendingTx.length} transações pendentes de enriquecimento`);
+  
+  let enrichedCount = 0;
+  let batchUpdates: any[] = [];
+  let dynamicDelay = 300; // Começa com 300ms entre requests
+  
+  for (let i = 0; i < pendingTx.length; i++) {
+    // Verificar timeout
+    const elapsedTime = Date.now() - startTime;
+    if (elapsedTime > MAX_EXECUTION_TIME_MS) {
+      console.log(`⏱️ Timeout alcançado após ${i} transações. Salvando progresso...`);
+      
+      // Salvar batch pendente
+      if (batchUpdates.length > 0) {
+        for (const update of batchUpdates) {
+          await supabase
+            .from('synced_transactions')
+            .update({ category_name: update.category_name })
+            .eq('id', update.id);
+        }
+      }
+      
+      // Atualizar log
+      await supabase
+        .from('sync_logs')
+        .update({
+          transactions_enriched: enrichedCount,
+          categories_found: enrichedCount,
+          status: 'timeout',
+          metadata: { 
+            processed_this_round: i, 
+            pending_remaining: pendingTx.length - i,
+            will_continue: true
+          }
+        })
+        .eq('id', logId);
+      
+      return { enriched: enrichedCount, total: pendingTx.length, completed: false };
+    }
+    
+    const tx = pendingTx[i];
+    const parcelaId = tx.external_id.replace(/^(receber_|pagar_)/, '');
+    
+    const { category, reason } = await fetchCategoryForTransaction(parcelaId, accessToken);
+    
+    if (category) {
+      batchUpdates.push({ id: tx.id, category_name: category });
+      enrichedCount++;
+      // Sucesso - diminuir delay gradualmente
+      dynamicDelay = Math.max(150, dynamicDelay - 20);
+    } else if (reason === 'rate_limit') {
+      // Rate limit persistente - aumentar delay
+      dynamicDelay = Math.min(3000, dynamicDelay * 2);
+    }
+    
+    // Salvar batch incrementalmente
+    if (batchUpdates.length >= BATCH_SAVE_SIZE) {
+      console.log(`💾 Salvando batch de ${batchUpdates.length} categorias (${i + 1}/${pendingTx.length})...`);
+      for (const update of batchUpdates) {
+        await supabase
+          .from('synced_transactions')
+          .update({ category_name: update.category_name })
+          .eq('id', update.id);
+      }
+      batchUpdates = [];
+      
+      // Atualizar log de progresso
+      await supabase
+        .from('sync_logs')
+        .update({
+          transactions_enriched: enrichedCount,
+          categories_found: enrichedCount,
+          metadata: { progress: `${i + 1}/${pendingTx.length}` }
+        })
+        .eq('id', logId);
+    }
+    
+    // Log de progresso a cada 100
+    if ((i + 1) % 100 === 0) {
+      console.log(`📊 Progresso: ${i + 1}/${pendingTx.length} (${enrichedCount} categorias encontradas)`);
+    }
+    
+    // Delay adaptativo entre requests
+    await new Promise(resolve => setTimeout(resolve, dynamicDelay));
+  }
+  
+  // Salvar últimas atualizações pendentes
+  if (batchUpdates.length > 0) {
+    console.log(`💾 Salvando batch final de ${batchUpdates.length} categorias...`);
+    for (const update of batchUpdates) {
+      await supabase
+        .from('synced_transactions')
+        .update({ category_name: update.category_name })
+        .eq('id', update.id);
+    }
+  }
+  
+  console.log(`✅ Enriquecimento completo: ${enrichedCount}/${pendingTx.length} categorias encontradas`);
+  return { enriched: enrichedCount, total: pendingTx.length, completed: true };
 }
 
 async function fetchAllPages(endpoint: string, accessToken: string, params: Record<string, string>) {
@@ -119,10 +264,69 @@ async function chunkedUpsert(supabase: any, rows: any[], chunkSize = 500) {
   }
 }
 
+// Self-invocation: chama a si mesmo para continuar o processamento
+async function selfInvoke(supabaseUrl: string, anonKey: string, roundNumber: number) {
+  console.log(`🔄 Auto-restart: aguardando ${SELF_INVOKE_DELAY_MS / 1000}s antes da rodada ${roundNumber + 1}...`);
+  
+  await new Promise(resolve => setTimeout(resolve, SELF_INVOKE_DELAY_MS));
+  
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/daily-sync-job`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        is_continuation: true, 
+        round_number: roundNumber + 1 
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error(`❌ Falha ao auto-reiniciar: ${response.status}`);
+    } else {
+      console.log(`✅ Próxima rodada iniciada com sucesso`);
+    }
+  } catch (error) {
+    console.error('❌ Erro ao auto-reiniciar:', error);
+  }
+}
+
 serve(async (req) => {
+  const startTime = Date.now();
+  
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    // Parse body para verificar se é continuation
+    let isContinuation = false;
+    let roundNumber = 1;
+    
+    try {
+      const body = await req.json();
+      isContinuation = body?.is_continuation || false;
+      roundNumber = body?.round_number || 1;
+    } catch {
+      // Body vazio ou inválido - é a primeira rodada
+    }
+    
+    // Verificar limite de rodadas
+    if (roundNumber > MAX_ROUNDS) {
+      console.error(`⚠️ Limite de ${MAX_ROUNDS} rodadas atingido. Parando sync.`);
+      return new Response(JSON.stringify({ 
+        error: "Max rounds exceeded", 
+        round: roundNumber 
+      }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`🚀 DAILY SYNC JOB - Rodada ${roundNumber}/${MAX_ROUNDS}`);
+    console.log(`${'='.repeat(60)}\n`);
+
     const incomingSecret = req.headers.get("x-cron-secret");
     const expectedSecret = Deno.env.get("CRON_SECRET_TOKEN");
     const authHeader = req.headers.get("authorization");
@@ -130,7 +334,8 @@ serve(async (req) => {
     const bearerAnon = anonKey ? `Bearer ${anonKey}` : undefined;
 
     const authorized = (incomingSecret && expectedSecret && incomingSecret === expectedSecret) || 
-                      (authHeader && bearerAnon && authHeader === bearerAnon);
+                      (authHeader && bearerAnon && authHeader === bearerAnon) ||
+                      isContinuation; // Continuations são autorizadas
 
     if (!authorized) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -158,7 +363,6 @@ serve(async (req) => {
       });
     }
 
-    // Flatten the schools array to single object
     const configs: ContaAzulConfig[] = (rawConfigs || []).map((config: any) => ({
       ...config,
       schools: Array.isArray(config.schools) ? config.schools[0] : config.schools,
@@ -169,19 +373,35 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log(`Found ${configs.length} school(s) with Conta Azul configuration`);
+    console.log(`📚 ${configs.length} escola(s) com Conta Azul configurado`);
+    
     const syncResults: any[] = [];
+    let anyPendingEnrichment = false;
 
     for (const config of configs) {
       const schoolName = config.schools?.name || 'Unknown';
       const schoolSlug = config.schools?.slug || 'unknown';
       
       try {
-        console.log(`\n========================================`);
-        console.log(`Sincronizando: ${schoolName} (${schoolSlug})`);
-        console.log(`========================================\n`);
+        console.log(`\n${'─'.repeat(50)}`);
+        console.log(`📍 ${schoolName} (${schoolSlug})`);
+        console.log(`${'─'.repeat(50)}`);
 
-        // Buscar credenciais OAuth da escola
+        // Criar log para esta escola e rodada
+        const { data: logEntry, error: logError } = await supabase
+          .from('sync_logs')
+          .insert({
+            school_id: config.school_id,
+            round_number: roundNumber,
+            status: 'running',
+            started_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+        
+        const logId = logEntry?.id;
+
+        // Buscar credenciais OAuth
         const { data: oauthCreds, error: credsError } = await supabase
           .from('school_oauth_credentials')
           .select('client_id, client_secret')
@@ -189,7 +409,12 @@ serve(async (req) => {
           .single();
 
         if (credsError || !oauthCreds) {
-          console.error(`[${schoolSlug}] OAuth credentials not found`);
+          console.error(`❌ Credenciais OAuth não encontradas`);
+          await supabase.from('sync_logs').update({ 
+            status: 'failed', 
+            error_message: 'OAuth credentials not found',
+            completed_at: new Date().toISOString()
+          }).eq('id', logId);
           syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "OAuth credentials not found" });
           continue;
         }
@@ -199,8 +424,9 @@ serve(async (req) => {
         const expiresAt = new Date(config.expires_at).getTime();
         const buffer = 5 * 60 * 1000;
 
+        // Refresh token se necessário
         if (!expiresAt || expiresAt <= now + buffer) {
-          console.log(`[${schoolSlug}] Refreshing token...`);
+          console.log(`🔑 Renovando token...`);
           const refreshRes = await supabase.functions.invoke("conta-azul-auth", {
             body: { 
               refreshToken: config.refresh_token,
@@ -209,8 +435,13 @@ serve(async (req) => {
             },
           });
 
-          if (refreshRes.error) {
-            console.error(`[${schoolSlug}] Token refresh failed`);
+          if (refreshRes.error || !refreshRes.data?.access_token) {
+            console.error(`❌ Falha ao renovar token`);
+            await supabase.from('sync_logs').update({ 
+              status: 'failed', 
+              error_message: 'Token refresh failed - reconexão necessária',
+              completed_at: new Date().toISOString()
+            }).eq('id', logId);
             syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "Token refresh failed" });
             continue;
           }
@@ -225,57 +456,98 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", config.id);
           
-          console.log(`[${schoolSlug}] Token refreshed`);
+          console.log(`✅ Token renovado`);
         }
 
-        const endDate = new Date().toISOString().split("T")[0];
-        const params = { 'data_vencimento_de': START_DATE, 'data_vencimento_ate': endDate };
+        // Na primeira rodada, buscar dados do Conta Azul
+        if (roundNumber === 1) {
+          console.log(`📥 Buscando dados do Conta Azul...`);
+          
+          const endDate = new Date().toISOString().split("T")[0];
+          const params = { 'data_vencimento_de': START_DATE, 'data_vencimento_ate': endDate };
 
-        const [receberItems, pagarItems] = await Promise.all([
-          fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-receber/buscar', accessToken, params),
-          fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', accessToken, params),
-        ]);
+          const [receberItems, pagarItems] = await Promise.all([
+            fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-receber/buscar', accessToken, params),
+            fetchAllPages('/v1/financeiro/eventos-financeiros/contas-a-pagar/buscar', accessToken, params),
+          ]);
 
-        const filteredReceberItems = receberItems.filter((item: any) => 
-          ['RECEBIDO', 'ATRASADO', 'EM_ABERTO'].includes(item.status_traduzido));
-        const filteredPagarItems = pagarItems.filter((item: any) => 
-          ['RECEBIDO', 'ATRASADO', 'EM_ABERTO'].includes(item.status_traduzido));
+          console.log(`📊 Recebido: ${receberItems.length} receitas, ${pagarItems.length} despesas`);
 
-        // Mapear com fallback para "Outras Receitas" / "Outras Despesas"
-        const incomeRows = filteredReceberItems.map((item: any) => ({
-          external_id: `receber_${item.id}`, type: 'income',
-          amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
-          description: item.descricao || 'Conta a Receber', transaction_date: item.data_vencimento,
-          status: item.status_traduzido, 
-          category_name: 'Outras Receitas', // Fallback - será substituído se encontrar categoria real
-          category_color: '#22c55e',
-          entity_name: item.fornecedor?.nome || null, school_id: config.school_id, raw_data: item,
-        }));
+          const filteredReceberItems = receberItems.filter((item: any) => 
+            ['RECEBIDO', 'ATRASADO', 'EM_ABERTO'].includes(item.status_traduzido));
+          const filteredPagarItems = pagarItems.filter((item: any) => 
+            ['RECEBIDO', 'ATRASADO', 'EM_ABERTO'].includes(item.status_traduzido));
 
-        const expenseRows = filteredPagarItems.map((item: any) => ({
-          external_id: `pagar_${item.id}`, type: 'expense',
-          amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
-          description: item.descricao || 'Conta a Pagar', transaction_date: item.data_vencimento,
-          status: item.status_traduzido, 
-          category_name: 'Outras Despesas', // Fallback - será substituído se encontrar categoria real
-          category_color: '#ef4444',
-          entity_name: item.fornecedor?.nome || null, school_id: config.school_id, raw_data: item,
-        }));
+          // Mapear com fallback
+          const incomeRows = filteredReceberItems.map((item: any) => ({
+            external_id: `receber_${item.id}`, type: 'income',
+            amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
+            description: item.descricao || 'Conta a Receber', transaction_date: item.data_vencimento,
+            status: item.status_traduzido, 
+            category_name: 'Outras Receitas',
+            category_color: '#22c55e',
+            entity_name: item.fornecedor?.nome || null, school_id: config.school_id, raw_data: item,
+          }));
 
-        // Enriquecer com categorias reais do Conta Azul
-        const allRows = [...incomeRows, ...expenseRows];
-        const enrichedRows = await enrichTransactionsWithCategories(allRows, accessToken);
+          const expenseRows = filteredPagarItems.map((item: any) => ({
+            external_id: `pagar_${item.id}`, type: 'expense',
+            amount: item.status_traduzido === 'RECEBIDO' ? (item.pago ?? 0) : (item.total ?? 0),
+            description: item.descricao || 'Conta a Pagar', transaction_date: item.data_vencimento,
+            status: item.status_traduzido, 
+            category_name: 'Outras Despesas',
+            category_color: '#ef4444',
+            entity_name: item.fornecedor?.nome || null, school_id: config.school_id, raw_data: item,
+          }));
 
-        await supabase.from("synced_transactions").delete().eq("school_id", config.school_id);
-        if (enrichedRows.length > 0) await chunkedUpsert(supabase, enrichedRows, 500);
+          const allRows = [...incomeRows, ...expenseRows];
+          
+          console.log(`💾 Salvando ${allRows.length} transações com categorias fallback...`);
+          
+          // Deletar transações antigas e inserir novas
+          await supabase.from("synced_transactions").delete().eq("school_id", config.school_id);
+          if (allRows.length > 0) await chunkedUpsert(supabase, allRows, 500);
+          
+          await supabase.from('sync_logs').update({ 
+            transactions_fetched: allRows.length 
+          }).eq('id', logId);
+          
+          console.log(`✅ ${allRows.length} transações salvas`);
+        }
 
-        console.log(`[${schoolSlug}] ✅ Synced ${enrichedRows.length} transactions`);
+        // Enriquecer categorias pendentes
+        console.log(`🏷️ Iniciando enriquecimento de categorias...`);
+        
+        const enrichResult = await enrichPendingTransactions(
+          supabase, 
+          config.school_id, 
+          accessToken, 
+          startTime,
+          logId
+        );
+
+        if (!enrichResult.completed) {
+          anyPendingEnrichment = true;
+        }
+
+        // Atualizar log final
+        await supabase.from('sync_logs').update({ 
+          status: enrichResult.completed ? 'completed' : 'timeout',
+          completed_at: new Date().toISOString(),
+          transactions_enriched: enrichResult.enriched,
+          categories_found: enrichResult.enriched
+        }).eq('id', logId);
+
         syncResults.push({
-          school: schoolName, slug: schoolSlug, success: true,
-          receivablesCount: incomeRows.length, payablesCount: expenseRows.length, totalTransactions: enrichedRows.length,
+          school: schoolName, 
+          slug: schoolSlug, 
+          success: true,
+          enriched: enrichResult.enriched,
+          pending: enrichResult.total - enrichResult.enriched,
+          completed: enrichResult.completed
         });
+
       } catch (schoolError: any) {
-        console.error(`[${schoolSlug}] ❌ Failed:`, schoolError);
+        console.error(`❌ Erro:`, schoolError);
         syncResults.push({
           school: schoolName, slug: schoolSlug,
           success: false, error: schoolError.message,
@@ -283,34 +555,55 @@ serve(async (req) => {
       }
     }
 
-    const successfulSyncs = syncResults.filter(r => r.success);
-    const failedSyncs = syncResults.filter(r => !r.success);
-    const totalReceivables = successfulSyncs.reduce((sum, r) => sum + (r.receivablesCount || 0), 0);
-    const totalPayables = successfulSyncs.reduce((sum, r) => sum + (r.payablesCount || 0), 0);
-    const totalTransactions = successfulSyncs.reduce((sum, r) => sum + (r.totalTransactions || 0), 0);
-
-    console.log(`\nRESUMO: ${successfulSyncs.length}/${configs.length} escolas sincronizadas, ${totalTransactions} transações\n`);
-
-    try {
-      await supabase.functions.invoke("send-sync-notification", {
-        body: {
-          status: failedSyncs.length > 0 ? "partial" : "success", receivablesCount: totalReceivables,
-          payablesCount: totalPayables, totalTransactions, timestamp: new Date().toISOString(),
-          syncResults, schoolsProcessed: configs.length, schoolsSuccessful: successfulSyncs.length,
-          schoolsFailed: failedSyncs.length,
-        },
-      });
-    } catch (emailError: any) {
-      console.error("Failed to send email:", emailError.message);
+    // Verificar se precisa continuar
+    if (anyPendingEnrichment && roundNumber < MAX_ROUNDS) {
+      console.log(`\n⏳ Ainda há transações pendentes. Agendando próxima rodada...`);
+      
+      // Self-invoke em background (fire and forget)
+      selfInvoke(supabaseUrl, anonKey!, roundNumber).catch(err => 
+        console.error('Erro no auto-restart:', err)
+      );
+    } else if (!anyPendingEnrichment) {
+      console.log(`\n🎉 Todas as escolas sincronizadas com 100% das categorias!`);
+      
+      // Enviar notificação de sucesso
+      try {
+        const successfulSyncs = syncResults.filter(r => r.success);
+        const totalEnriched = successfulSyncs.reduce((sum, r) => sum + (r.enriched || 0), 0);
+        
+        await supabase.functions.invoke("send-sync-notification", {
+          body: {
+            status: "success",
+            totalTransactions: totalEnriched,
+            timestamp: new Date().toISOString(),
+            syncResults,
+            schoolsProcessed: configs.length,
+            schoolsSuccessful: successfulSyncs.length,
+            totalRounds: roundNumber,
+            message: `Sincronização completa em ${roundNumber} rodada(s)`
+          },
+        });
+      } catch (emailError: any) {
+        console.error("Falha ao enviar email:", emailError.message);
+      }
     }
 
+    const successfulSyncs = syncResults.filter(r => r.success);
+    
     return new Response(JSON.stringify({
-      success: true, schoolsProcessed: configs.length, schoolsSuccessful: successfulSyncs.length,
-      schoolsFailed: failedSyncs.length, totalReceivables, totalPayables, totalTransactions,
-      results: syncResults, ranAt: new Date().toISOString(),
+      success: true,
+      round: roundNumber,
+      maxRounds: MAX_ROUNDS,
+      schoolsProcessed: configs.length,
+      schoolsSuccessful: successfulSyncs.length,
+      allCompleted: !anyPendingEnrichment,
+      willContinue: anyPendingEnrichment && roundNumber < MAX_ROUNDS,
+      results: syncResults,
+      ranAt: new Date().toISOString(),
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (error: any) {
-    console.error("Sync failed:", error);
+    console.error("❌ Sync failed:", error);
     return new Response(JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
