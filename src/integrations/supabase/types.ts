@@ -214,6 +214,59 @@ export type Database = {
           },
         ]
       }
+      sync_logs: {
+        Row: {
+          categories_found: number | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metadata: Json | null
+          round_number: number
+          school_id: string | null
+          started_at: string
+          status: string
+          transactions_enriched: number | null
+          transactions_fetched: number | null
+        }
+        Insert: {
+          categories_found?: number | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          round_number?: number
+          school_id?: string | null
+          started_at?: string
+          status?: string
+          transactions_enriched?: number | null
+          transactions_fetched?: number | null
+        }
+        Update: {
+          categories_found?: number | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metadata?: Json | null
+          round_number?: number
+          school_id?: string | null
+          started_at?: string
+          status?: string
+          transactions_enriched?: number | null
+          transactions_fetched?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       synced_transactions: {
         Row: {
           amount: number
