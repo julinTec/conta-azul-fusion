@@ -180,7 +180,7 @@ export const Pending = () => {
           </h1>
         </div>
         <p className="text-xs text-muted-foreground italic">
-          *Valores pendentes de recebimento/pagamento
+          *Valores vencidos e em aberto de recebimento/pagamento
         </p>
       </div>
 
