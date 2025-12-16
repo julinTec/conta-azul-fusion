@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Declare EdgeRuntime for Supabase background tasks
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret, x-cron-job",
@@ -559,9 +564,11 @@ serve(async (req) => {
     if (anyPendingEnrichment && roundNumber < MAX_ROUNDS) {
       console.log(`\n⏳ Ainda há transações pendentes. Agendando próxima rodada...`);
       
-      // Self-invoke em background (fire and forget)
-      selfInvoke(supabaseUrl, anonKey!, roundNumber).catch(err => 
-        console.error('Erro no auto-restart:', err)
+      // Self-invoke em background usando waitUntil para garantir execução
+      EdgeRuntime.waitUntil(
+        selfInvoke(supabaseUrl, anonKey!, roundNumber).catch(err => 
+          console.error('Erro no auto-restart:', err)
+        )
       );
     } else if (!anyPendingEnrichment) {
       console.log(`\n🎉 Todas as escolas sincronizadas com 100% das categorias!`);
