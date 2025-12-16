@@ -3,9 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown } from "lucide-react";
+import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown, Check, ChevronsUpDown } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -51,6 +53,7 @@ export const Transactions = () => {
   const [endDate, setEndDate] = useState(end);
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [categoryOpen, setCategoryOpen] = useState(false);
 
   const uniqueCategories = useMemo(() => {
     const categories = new Set<string>();
@@ -319,19 +322,54 @@ export const Transactions = () => {
               </div>
             </div>
             <div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas as categorias" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  <SelectItem value="all">Todas as categorias</SelectItem>
-                  {uniqueCategories.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={categoryOpen}
+                    className="w-full justify-between font-normal"
+                  >
+                    {categoryFilter === 'all' 
+                      ? "Todas as categorias" 
+                      : categoryFilter}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Pesquisar categoria..." />
+                    <CommandList>
+                      <CommandEmpty>Nenhuma categoria encontrada.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="all"
+                          onSelect={() => {
+                            setCategoryFilter('all');
+                            setCategoryOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", categoryFilter === 'all' ? "opacity-100" : "opacity-0")} />
+                          Todas as categorias
+                        </CommandItem>
+                        {uniqueCategories.map(category => (
+                          <CommandItem
+                            key={category}
+                            value={category}
+                            onSelect={() => {
+                              setCategoryFilter(category);
+                              setCategoryOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", categoryFilter === category ? "opacity-100" : "opacity-0")} />
+                            {category}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Input
