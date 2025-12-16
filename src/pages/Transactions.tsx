@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Search, Filter, ArrowUpCircle, ArrowDownCircle, FileDown } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import * as XLSX from 'xlsx';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -49,6 +50,15 @@ export const Transactions = () => {
   const [startDate, setStartDate] = useState(start);
   const [endDate, setEndDate] = useState(end);
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  const uniqueCategories = useMemo(() => {
+    const categories = new Set<string>();
+    transactions.forEach(t => {
+      if (t.category?.name) categories.add(t.category.name);
+    });
+    return Array.from(categories).sort();
+  }, [transactions]);
 
   useEffect(() => {
     if (!schoolLoading && !school) {
@@ -64,7 +74,7 @@ export const Transactions = () => {
 
   useEffect(() => {
     filterTransactions();
-  }, [searchTerm, startDate, endDate, transactions, typeFilter]);
+  }, [searchTerm, startDate, endDate, transactions, typeFilter, categoryFilter]);
 
   const fetchAllTransactions = async () => {
     if (!school?.id) return [];
@@ -142,6 +152,11 @@ export const Transactions = () => {
       filtered = filtered.filter(t => t.type === typeFilter);
     }
 
+    // Filter by category
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(t => t.category?.name === categoryFilter);
+    }
+
     // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(t => 
@@ -170,6 +185,7 @@ export const Transactions = () => {
     setStartDate(start);
     setEndDate(end);
     setTypeFilter('all');
+    setCategoryFilter('all');
   };
 
   const getDisplayPeriod = () => {
@@ -290,17 +306,32 @@ export const Transactions = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="md:col-span-2">
               <div className="relative">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por descrição ou categoria..."
+                  placeholder="Buscar por descrição..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
                 />
               </div>
+            </div>
+            <div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as categorias" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  <SelectItem value="all">Todas as categorias</SelectItem>
+                  {uniqueCategories.map(category => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Input
@@ -320,7 +351,7 @@ export const Transactions = () => {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            {(searchTerm || startDate || endDate) && (
+            {(searchTerm || startDate || endDate || categoryFilter !== 'all') && (
               <Button onClick={clearFilters} variant="outline" size="sm">
                 Limpar Filtros
               </Button>

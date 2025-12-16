@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Download } from "lucide-react";
 import * as XLSX from 'xlsx';
@@ -78,8 +78,8 @@ export const Pending = () => {
   );
   
   const getDisplayPeriod = () => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = parseISO(startDate);
+    const end = parseISO(endDate);
     if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
       return format(start, "MMMM 'de' yyyy", { locale: ptBR });
     }
