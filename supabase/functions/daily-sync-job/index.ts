@@ -573,25 +573,66 @@ serve(async (req) => {
     } else if (!anyPendingEnrichment) {
       console.log(`\n🎉 Todas as escolas sincronizadas com 100% das categorias!`);
       
+      // Buscar estatísticas finais do banco para o email
+      const { data: finalStats } = await supabase
+        .from('synced_transactions')
+        .select('type, amount')
+        .in('school_id', configs.map(c => c.school_id));
+      
+      const receivablesCount = finalStats?.filter((t: any) => t.type === 'income').length || 0;
+      const payablesCount = finalStats?.filter((t: any) => t.type === 'expense').length || 0;
+      const totalTransactions = (finalStats?.length || 0);
+      
+      // Formatar resultados por escola com contagens
+      const formattedResults = await Promise.all(syncResults.map(async (r) => {
+        if (r.success) {
+          const schoolConfig = configs.find(c => c.schools?.slug === r.slug);
+          if (schoolConfig) {
+            const { data: schoolStats } = await supabase
+              .from('synced_transactions')
+              .select('type')
+              .eq('school_id', schoolConfig.school_id);
+            
+            return {
+              school: r.school,
+              slug: r.slug,
+              success: true,
+              receivablesCount: schoolStats?.filter((t: any) => t.type === 'income').length || 0,
+              payablesCount: schoolStats?.filter((t: any) => t.type === 'expense').length || 0,
+              totalTransactions: schoolStats?.length || 0
+            };
+          }
+        }
+        return r;
+      }));
+      
       // Enviar notificação de sucesso
       try {
         const successfulSyncs = syncResults.filter(r => r.success);
-        const totalEnriched = successfulSyncs.reduce((sum, r) => sum + (r.enriched || 0), 0);
         
-        await supabase.functions.invoke("send-sync-notification", {
+        console.log(`📧 Enviando email de notificação...`);
+        
+        const notificationResponse = await supabase.functions.invoke("send-sync-notification", {
           body: {
             status: "success",
-            totalTransactions: totalEnriched,
+            receivablesCount,
+            payablesCount,
+            totalTransactions,
             timestamp: new Date().toISOString(),
-            syncResults,
+            syncResults: formattedResults,
             schoolsProcessed: configs.length,
             schoolsSuccessful: successfulSyncs.length,
-            totalRounds: roundNumber,
-            message: `Sincronização completa em ${roundNumber} rodada(s)`
+            schoolsFailed: syncResults.filter(r => !r.success).length
           },
         });
+        
+        if (notificationResponse.error) {
+          console.error("❌ Falha ao enviar email:", notificationResponse.error);
+        } else {
+          console.log(`✅ Email de notificação enviado com sucesso!`);
+        }
       } catch (emailError: any) {
-        console.error("Falha ao enviar email:", emailError.message);
+        console.error("❌ Falha ao enviar email:", emailError.message);
       }
     }
 
