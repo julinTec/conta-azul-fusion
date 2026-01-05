@@ -10,9 +10,9 @@ interface SyncResult {
 }
 
 interface SyncNotificationRequest {
-  status: "success" | "error" | "partial"; receivablesCount: number; payablesCount: number;
+  status: "success" | "error" | "partial" | "no_changes"; receivablesCount: number; payablesCount: number;
   totalTransactions: number; timestamp: string; errorMessage?: string; syncResults?: SyncResult[];
-  schoolsProcessed?: number; schoolsSuccessful?: number; schoolsFailed?: number;
+  schoolsProcessed?: number; schoolsSuccessful?: number; schoolsFailed?: number; message?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -20,13 +20,14 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const { status, receivablesCount, payablesCount, totalTransactions, timestamp, errorMessage,
-      syncResults, schoolsProcessed, schoolsSuccessful, schoolsFailed }: SyncNotificationRequest = await req.json();
+      syncResults, schoolsProcessed, schoolsSuccessful, schoolsFailed, message }: SyncNotificationRequest = await req.json();
 
     const isSuccess = status === "success";
+    const isNoChanges = status === "no_changes";
     const isPartial = status === "partial";
-    const statusColor = isSuccess ? "#10b981" : isPartial ? "#f59e0b" : "#ef4444";
-    const statusIcon = isSuccess ? "✅" : isPartial ? "⚠️" : "❌";
-    const statusText = isSuccess ? "Sucesso" : isPartial ? "Parcial" : "Erro";
+    const statusColor = isSuccess || isNoChanges ? "#10b981" : isPartial ? "#f59e0b" : "#ef4444";
+    const statusIcon = isSuccess ? "✅" : isNoChanges ? "📋" : isPartial ? "⚠️" : "❌";
+    const statusText = isSuccess ? "Sucesso" : isNoChanges ? "Verificado" : isPartial ? "Parcial" : "Erro";
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
