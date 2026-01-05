@@ -560,6 +560,39 @@ serve(async (req) => {
       }
     }
 
+    // Buscar estatísticas finais do banco para o email (sempre)
+    const { data: finalStats } = await supabase
+      .from('synced_transactions')
+      .select('type, amount')
+      .in('school_id', configs.map(c => c.school_id));
+    
+    const receivablesCount = finalStats?.filter((t: any) => t.type === 'income').length || 0;
+    const payablesCount = finalStats?.filter((t: any) => t.type === 'expense').length || 0;
+    const totalTransactions = (finalStats?.length || 0);
+    
+    // Formatar resultados por escola com contagens
+    const formattedResults = await Promise.all(syncResults.map(async (r) => {
+      if (r.success) {
+        const schoolConfig = configs.find(c => c.schools?.slug === r.slug);
+        if (schoolConfig) {
+          const { data: schoolStats } = await supabase
+            .from('synced_transactions')
+            .select('type')
+            .eq('school_id', schoolConfig.school_id);
+          
+          return {
+            school: r.school,
+            slug: r.slug,
+            success: true,
+            receivablesCount: schoolStats?.filter((t: any) => t.type === 'income').length || 0,
+            payablesCount: schoolStats?.filter((t: any) => t.type === 'expense').length || 0,
+            totalTransactions: schoolStats?.length || 0
+          };
+        }
+      }
+      return r;
+    }));
+
     // Verificar se precisa continuar
     if (anyPendingEnrichment && roundNumber < MAX_ROUNDS) {
       console.log(`\n⏳ Ainda há transações pendentes. Agendando próxima rodada...`);
@@ -570,51 +603,25 @@ serve(async (req) => {
           console.error('Erro no auto-restart:', err)
         )
       );
-    } else if (!anyPendingEnrichment) {
-      console.log(`\n🎉 Todas as escolas sincronizadas com 100% das categorias!`);
+    } else {
+      // Sincronização completa OU primeira rodada sem novas transações - enviar email
+      const isNoChanges = roundNumber === 1 && syncResults.every(r => r.success && r.enriched === 0 && r.pending === 0);
+      const statusType = isNoChanges ? "no_changes" : "success";
+      const statusMessage = isNoChanges 
+        ? "Verificação diária concluída - todos os dados estão atualizados" 
+        : "Sincronização completa com sucesso";
       
-      // Buscar estatísticas finais do banco para o email
-      const { data: finalStats } = await supabase
-        .from('synced_transactions')
-        .select('type, amount')
-        .in('school_id', configs.map(c => c.school_id));
+      console.log(`\n🎉 ${statusMessage}`);
       
-      const receivablesCount = finalStats?.filter((t: any) => t.type === 'income').length || 0;
-      const payablesCount = finalStats?.filter((t: any) => t.type === 'expense').length || 0;
-      const totalTransactions = (finalStats?.length || 0);
-      
-      // Formatar resultados por escola com contagens
-      const formattedResults = await Promise.all(syncResults.map(async (r) => {
-        if (r.success) {
-          const schoolConfig = configs.find(c => c.schools?.slug === r.slug);
-          if (schoolConfig) {
-            const { data: schoolStats } = await supabase
-              .from('synced_transactions')
-              .select('type')
-              .eq('school_id', schoolConfig.school_id);
-            
-            return {
-              school: r.school,
-              slug: r.slug,
-              success: true,
-              receivablesCount: schoolStats?.filter((t: any) => t.type === 'income').length || 0,
-              payablesCount: schoolStats?.filter((t: any) => t.type === 'expense').length || 0,
-              totalTransactions: schoolStats?.length || 0
-            };
-          }
-        }
-        return r;
-      }));
-      
-      // Enviar notificação de sucesso
+      // Enviar notificação
       try {
         const successfulSyncs = syncResults.filter(r => r.success);
         
-        console.log(`📧 Enviando email de notificação...`);
+        console.log(`📧 Enviando email de notificação (${statusType})...`);
         
         const notificationResponse = await supabase.functions.invoke("send-sync-notification", {
           body: {
-            status: "success",
+            status: statusType,
             receivablesCount,
             payablesCount,
             totalTransactions,
@@ -622,7 +629,8 @@ serve(async (req) => {
             syncResults: formattedResults,
             schoolsProcessed: configs.length,
             schoolsSuccessful: successfulSyncs.length,
-            schoolsFailed: syncResults.filter(r => !r.success).length
+            schoolsFailed: syncResults.filter(r => !r.success).length,
+            message: statusMessage
           },
         });
         
