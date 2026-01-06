@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.test-conta-azul-categories]
 verify_jwt = true
+
+[functions.fetch-sheets-faturamento]
+verify_jwt = false

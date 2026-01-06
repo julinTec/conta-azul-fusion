@@ -13,6 +13,7 @@ import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 import SchoolSelection from "./pages/SchoolSelection";
+import FaturamentoProjetado from "./pages/FaturamentoProjetado";
 import { AdminGuard } from "./components/AdminGuard";
 import { AdminPanel } from "./components/AdminPanel";
 import { SchoolRoute } from "./components/SchoolRoute";
@@ -29,6 +30,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/schools" element={<SchoolSelection />} />
+          <Route path="/faturamento-projetado" element={<FaturamentoProjetado />} />
           
           {/* Rotas dinâmicas por escola */}
           <Route path="/school/:schoolSlug/dashboard" element={<SchoolRoute><Dashboard /></SchoolRoute>} />
