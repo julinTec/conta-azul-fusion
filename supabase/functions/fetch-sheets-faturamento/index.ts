@@ -61,14 +61,43 @@ function parseNumber(value: string): number {
   return isNaN(num) ? 0 : num;
 }
 
+function excelSerialToDate(serial: number): string {
+  // Excel/Google Sheets: days since 30/12/1899
+  const excelEpoch = new Date(1899, 11, 30);
+  const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
+  
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
+}
+
 function parseDate(dateStr: string): string {
   if (!dateStr) return '';
+  
+  const trimmed = dateStr.trim();
+  
+  // If it's an Excel serial number (only digits, optionally with decimal)
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    const serial = parseFloat(trimmed);
+    if (serial > 0 && serial < 100000) {
+      return excelSerialToDate(serial);
+    }
+  }
+  
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  
   // Try to parse dd/mm/yyyy format
-  const parts = dateStr.split('/');
+  const parts = trimmed.split('/');
   if (parts.length === 3) {
     const [day, month, year] = parts;
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
+  
   return dateStr;
 }
 
