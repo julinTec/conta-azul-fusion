@@ -34,7 +34,7 @@ const YEARS = ["2025", "2026", "2027"];
 const SCHOOL_COLORS: Record<string, string> = {
   "paulo-freire": "hsl(var(--primary))",
   "renascer": "hsl(142, 76%, 36%)",
-  "conectivo": "hsl(217, 91%, 60%)",
+  "conectivo": "hsl(0, 84%, 60%)",
   "aventurando": "hsl(25, 95%, 53%)",
 };
 
@@ -97,9 +97,6 @@ const FaturamentoProjetado = () => {
   const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all" || selectedSchool !== "all";
 
   const filteredResumos = useMemo(() => {
-    // If no filters are active, return original resumos from API
-    if (!hasActiveFilters) return data?.resumos || [];
-    
     const schools = ["paulo-freire", "renascer", "conectivo", "aventurando"];
     const schoolNames: Record<string, string> = {
       "paulo-freire": "Colégio Paulo Freire",
@@ -108,22 +105,31 @@ const FaturamentoProjetado = () => {
       "aventurando": "Colégio Aventurando",
     };
     
+    // Use filteredItems if filters are active, otherwise use all items
+    const itemsToUse = hasActiveFilters ? filteredItems : (data?.items || []);
+    
     return schools.map(slug => {
-      const schoolItems = filteredItems.filter(item => item.escolaSlug === slug);
+      const schoolItems = itemsToUse.filter(item => item.escolaSlug === slug);
       const uniqueStudents = new Set(schoolItems.map(item => item.nomeAluno)).size;
       const totalFaturamento = schoolItems.reduce((sum, item) => sum + item.valor, 0);
+      const totalPendente = schoolItems
+        .filter(item => item.status?.toLowerCase() === "pendente")
+        .reduce((sum, item) => sum + item.valor, 0);
       const totalBoletos = schoolItems.length;
+      const percentualInadimplencia = totalFaturamento > 0 ? (totalPendente / totalFaturamento) * 100 : 0;
       
       return {
         escola: schoolNames[slug],
         escolaSlug: slug,
         totalFaturamento,
+        totalPendente,
+        percentualInadimplencia,
         totalAlunos: uniqueStudents,
         totalBoletos,
-      ticketMedio: totalBoletos > 0 ? totalFaturamento / totalBoletos : 0,
+        ticketMedio: totalBoletos > 0 ? totalFaturamento / totalBoletos : 0,
       };
     });
-  }, [filteredItems, data?.resumos, hasActiveFilters]);
+  }, [filteredItems, data?.items, hasActiveFilters]);
 
   const monthlyChartData = useMemo(() => {
     if (!data?.items) return [];
@@ -148,6 +154,53 @@ const FaturamentoProjetado = () => {
       
       monthlyData[monthKey][item.escolaSlug] += item.valor;
     });
+    
+    return Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, values]) => {
+        try {
+          const date = parseISO(`${month}-01`);
+          if (isNaN(date.getTime())) return null;
+          return {
+            month: format(date, "MMM/yy", { locale: ptBR }),
+            "Paulo Freire": values["paulo-freire"],
+            "Renascer": values["renascer"],
+            "Conectivo": values["conectivo"],
+            "Aventurando": values["aventurando"],
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }, [data?.items]);
+
+  // Chart data for "Acompanhamento Inadimplência" - only pendente items
+  const monthlyPendenteChartData = useMemo(() => {
+    if (!data?.items) return [];
+    
+    const monthlyData: Record<string, Record<string, number>> = {};
+    
+    data.items
+      .filter(item => item.status?.toLowerCase() === "pendente")
+      .forEach(item => {
+        if (!item.dataVencimento || item.dataVencimento.length < 7) return;
+        const monthKey = item.dataVencimento.substring(0, 7); // YYYY-MM
+        
+        // Validate format YYYY-MM
+        if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
+        
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = {
+            "paulo-freire": 0,
+            "renascer": 0,
+            "conectivo": 0,
+            "aventurando": 0,
+          };
+        }
+        
+        monthlyData[monthKey][item.escolaSlug] += item.valor;
+      });
     
     return Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -369,8 +422,11 @@ const FaturamentoProjetado = () => {
                     <span>{resumo.totalBoletos} boletos</span>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Ticket médio: {formatCurrency(resumo.ticketMedio)}
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Ticket médio: {formatCurrency(resumo.ticketMedio)}</span>
+                  <span className="font-medium text-destructive">
+                    % Inad: {resumo.percentualInadimplencia.toFixed(1)}%
+                  </span>
                 </div>
               </CardContent>
             </Card>
@@ -383,7 +439,7 @@ const FaturamentoProjetado = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                Faturamento Mensal por Escola
+                Faturamento Mensal (projetado) por Escola
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -407,12 +463,12 @@ const FaturamentoProjetado = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                Evolução Comparativa
+                Acompanhamento Inadimplência
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={monthlyChartData}>
+                <LineChart data={monthlyPendenteChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`} />
