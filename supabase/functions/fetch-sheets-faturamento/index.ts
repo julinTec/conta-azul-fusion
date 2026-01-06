@@ -26,43 +26,7 @@ interface FaturamentoItem {
   status: string;
 }
 
-function parseCSV(csvText: string): string[][] {
-  const lines = csvText.split('\n');
-  return lines.map(line => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    result.push(current.trim());
-    return result;
-  });
-}
-
-function parseNumber(value: string): number {
-  if (!value) return 0;
-  // Remove R$, spaces, and handle Brazilian number format
-  const cleaned = value
-    .replace(/R\$\s*/gi, '')
-    .replace(/\s/g, '')
-    .replace(/\./g, '')  // Remove thousand separators
-    .replace(',', '.');   // Convert decimal separator
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-}
-
 function excelSerialToDate(serial: number): string {
-  // Excel/Google Sheets: days since 30/12/1899
   const excelEpoch = new Date(1899, 11, 30);
   const date = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
   
@@ -73,36 +37,89 @@ function excelSerialToDate(serial: number): string {
   return `${year}-${month}-${day}`;
 }
 
-function parseDate(dateStr: string): string {
-  if (!dateStr) return '';
+function normalizeDate(value: unknown): string {
+  if (!value) return '';
   
-  const trimmed = dateStr.trim();
-  
-  // If it's an Excel serial number (only digits, optionally with decimal)
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    const serial = parseFloat(trimmed);
-    if (serial > 0 && serial < 100000) {
-      return excelSerialToDate(serial);
+  // If it's a gviz Date object like "Date(2026,1,15)" - month is 0-indexed
+  if (typeof value === 'string' && value.startsWith('Date(')) {
+    const match = value.match(/Date\((\d+),(\d+),(\d+)\)/);
+    if (match) {
+      const year = match[1];
+      const month = String(parseInt(match[2]) + 1).padStart(2, '0'); // 0-indexed
+      const day = match[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
   }
   
-  // If already in YYYY-MM-DD format, return as is
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
+  const strValue = String(value).trim();
+  
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(strValue)) {
+    return strValue;
   }
   
-  // Try to parse dd/mm/yyyy format
-  const parts = trimmed.split('/');
-  if (parts.length === 3) {
-    const [day, month, year] = parts;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  // dd/MM/yyyy format
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(strValue)) {
+    const parts = strValue.split('/');
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
   }
   
-  return dateStr;
+  // Excel serial number (numeric)
+  const numValue = parseFloat(strValue.replace(',', '.'));
+  if (!isNaN(numValue) && numValue > 40000 && numValue < 60000) {
+    return excelSerialToDate(numValue);
+  }
+  
+  return '';
+}
+
+function normalizeNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  
+  const strValue = String(value)
+    .replace(/R\$\s*/gi, '')
+    .replace(/\s/g, '')
+    .replace(/\./g, '')  // Remove thousand separators
+    .replace(',', '.');   // Convert decimal separator
+  
+  const num = parseFloat(strValue);
+  return isNaN(num) ? 0 : num;
+}
+
+function parseGvizResponse(text: string): { cols: { label: string }[]; rows: { c: ({ v: unknown } | null)[] }[] } | null {
+  // gviz returns: google.visualization.Query.setResponse({...})
+  const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);?$/);
+  if (!match) {
+    console.error('Failed to match gviz response pattern');
+    return null;
+  }
+  
+  try {
+    // Fix Date objects in JSON - they come as Date(YYYY,M,D)
+    const jsonStr = match[1].replace(/new Date\(([^)]+)\)/g, '"Date($1)"');
+    return JSON.parse(jsonStr).table;
+  } catch (e) {
+    console.error('Failed to parse gviz JSON:', e);
+    return null;
+  }
+}
+
+function findColumnIndex(cols: { label: string }[], ...possibleLabels: string[]): number {
+  for (const label of possibleLabels) {
+    const idx = cols.findIndex(c => 
+      c.label?.toLowerCase().trim() === label.toLowerCase().trim()
+    );
+    if (idx !== -1) return idx;
+  }
+  return -1;
 }
 
 async function fetchSchoolData(schoolSlug: string, schoolName: string): Promise<FaturamentoItem[]> {
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(schoolSlug)}`;
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(schoolSlug)}`;
   
   console.log(`Fetching data for ${schoolName} from tab: ${schoolSlug}`);
   
@@ -113,31 +130,76 @@ async function fetchSchoolData(schoolSlug: string, schoolName: string): Promise<
       return [];
     }
     
-    const csvText = await response.text();
-    const rows = parseCSV(csvText);
+    const text = await response.text();
+    const table = parseGvizResponse(text);
     
-    if (rows.length < 2) {
-      console.log(`No data found for ${schoolSlug}`);
+    if (!table || !table.cols || !table.rows) {
+      console.error(`No valid table data for ${schoolSlug}`);
       return [];
     }
     
-    // Skip header row
-    const dataRows = rows.slice(1).filter(row => row.some(cell => cell.trim() !== ''));
+    // Find column indices by label
+    const cols = table.cols;
+    console.log(`Columns for ${schoolSlug}:`, cols.map(c => c.label).join(', '));
     
-    console.log(`Found ${dataRows.length} rows for ${schoolSlug}`);
+    const colNomeAluno = findColumnIndex(cols, 'Nome do Aluno', 'Aluno', 'Nome');
+    const colNomeResponsavel = findColumnIndex(cols, 'Nome do Responsável', 'Responsável', 'Nome Responsável');
+    const colDataVencimento = findColumnIndex(cols, 'Data de vencimento', 'Data Vencimento', 'Vencimento');
+    const colValor = findColumnIndex(cols, 'Valor');
+    const colValorBruto = findColumnIndex(cols, 'Valor Bruto', 'Valor bruto');
+    const colDesconto = findColumnIndex(cols, 'Desconto');
+    const colSerie = findColumnIndex(cols, 'Série', 'Serie');
+    const colStatus = findColumnIndex(cols, 'Status');
     
-    return dataRows.map(row => ({
-      escola: schoolName,
-      escolaSlug: schoolSlug,
-      nomeAluno: row[0] || '',
-      nomeResponsavel: row[1] || '',
-      dataVencimento: parseDate(row[2] || ''),
-      valorBruto: parseNumber(row[3] || '0'),
-      desconto: row[4] || '',
-      valor: parseNumber(row[5] || '0'),
-      serie: row[6] || '',
-      status: row[7] || '',
-    }));
+    console.log(`Column indices for ${schoolSlug}: aluno=${colNomeAluno}, resp=${colNomeResponsavel}, data=${colDataVencimento}, valor=${colValor}, status=${colStatus}`);
+    
+    const items: FaturamentoItem[] = [];
+    let invalidDates = 0;
+    
+    for (const row of table.rows) {
+      if (!row.c) continue;
+      
+      const getValue = (idx: number): unknown => {
+        if (idx === -1 || !row.c[idx]) return null;
+        // gviz can have 'v' (value) and 'f' (formatted)
+        return row.c[idx]?.v ?? null;
+      };
+      
+      const nomeAluno = String(getValue(colNomeAluno) || '').trim();
+      if (!nomeAluno) continue; // Skip empty rows
+      
+      const rawDate = getValue(colDataVencimento);
+      const dataVencimento = normalizeDate(rawDate);
+      
+      if (!dataVencimento || !/^\d{4}-\d{2}-\d{2}$/.test(dataVencimento)) {
+        invalidDates++;
+        continue; // Skip rows with invalid dates
+      }
+      
+      // Validate year is reasonable (2020-2030)
+      const year = parseInt(dataVencimento.substring(0, 4));
+      if (year < 2020 || year > 2030) {
+        invalidDates++;
+        continue;
+      }
+      
+      items.push({
+        escola: schoolName,
+        escolaSlug: schoolSlug,
+        nomeAluno,
+        nomeResponsavel: String(getValue(colNomeResponsavel) || '').trim(),
+        dataVencimento,
+        valorBruto: normalizeNumber(getValue(colValorBruto)),
+        desconto: String(getValue(colDesconto) || '').trim(),
+        valor: normalizeNumber(getValue(colValor)),
+        serie: String(getValue(colSerie) || '').trim(),
+        status: String(getValue(colStatus) || '').trim(),
+      });
+    }
+    
+    console.log(`${schoolSlug}: ${items.length} valid items, ${invalidDates} skipped (invalid dates)`);
+    
+    return items;
   } catch (error) {
     console.error(`Error fetching ${schoolSlug}:`, error);
     return [];
@@ -152,7 +214,6 @@ serve(async (req) => {
   try {
     console.log('Fetching faturamento data from all schools...');
     
-    // Fetch data from all schools in parallel
     const allDataPromises = SCHOOLS.map(school => 
       fetchSchoolData(school.slug, school.name)
     );
@@ -162,7 +223,10 @@ serve(async (req) => {
     
     console.log(`Total items fetched: ${allItems.length}`);
     
-    // Calculate summary per school
+    // Log sample dates for debugging
+    const sampleDates = allItems.slice(0, 5).map(i => i.dataVencimento);
+    console.log('Sample dates:', sampleDates);
+    
     const resumos = SCHOOLS.map(school => {
       const schoolItems = allItems.filter(item => item.escolaSlug === school.slug);
       const uniqueStudents = new Set(schoolItems.map(item => item.nomeAluno)).size;

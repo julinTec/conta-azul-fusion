@@ -94,7 +94,7 @@ const FaturamentoProjetado = () => {
     });
   }, [data?.items, selectedDate, selectedMonth, selectedYear, selectedStatus, selectedSchool]);
 
-  const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all";
+  const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all" || selectedSchool !== "all";
 
   const filteredResumos = useMemo(() => {
     // If no filters are active, return original resumos from API
