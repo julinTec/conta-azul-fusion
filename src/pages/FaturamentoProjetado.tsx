@@ -80,8 +80,11 @@ const FaturamentoProjetado = () => {
     });
   }, [data?.items, selectedDate, selectedMonth, selectedYear, selectedStatus]);
 
+  const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all";
+
   const filteredResumos = useMemo(() => {
-    if (!filteredItems.length) return data?.resumos || [];
+    // If no filters are active, return original resumos from API
+    if (!hasActiveFilters) return data?.resumos || [];
     
     const schools = ["paulo-freire", "renascer", "conectivo", "aventurando"];
     const schoolNames: Record<string, string> = {
@@ -103,10 +106,10 @@ const FaturamentoProjetado = () => {
         totalFaturamento,
         totalAlunos: uniqueStudents,
         totalBoletos,
-        ticketMedio: totalBoletos > 0 ? totalFaturamento / totalBoletos : 0,
+      ticketMedio: totalBoletos > 0 ? totalFaturamento / totalBoletos : 0,
       };
     });
-  }, [filteredItems, data?.resumos]);
+  }, [filteredItems, data?.resumos, hasActiveFilters]);
 
   const monthlyChartData = useMemo(() => {
     if (!data?.items) return [];
@@ -183,11 +186,10 @@ const FaturamentoProjetado = () => {
     }
   };
 
-  const uniqueStatuses = useMemo(() => {
-    if (!data?.items) return [];
-    const statuses = new Set(data.items.map(item => item.status).filter(Boolean));
-    return Array.from(statuses);
-  }, [data?.items]);
+  const STATUS_OPTIONS = [
+    { value: "pendente", label: "Pendente" },
+    { value: "pago", label: "Pago" },
+  ];
 
   if (isLoading) {
     return (
@@ -293,9 +295,9 @@ const FaturamentoProjetado = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {uniqueStatuses.map(status => (
-                      <SelectItem key={status} value={status.toLowerCase()}>
-                        {status}
+                    {STATUS_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
