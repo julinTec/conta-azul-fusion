@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, Calendar, TrendingUp, Users, FileText, DollarSign, Loader2 } from "lucide-react";
+import { ArrowLeft, Calendar, TrendingUp, Users, FileText, DollarSign, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useFaturamentoSheets } from "@/hooks/useFaturamentoSheets";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
 
 const MONTHS = [
   { value: "01", label: "Janeiro" },
@@ -37,6 +38,13 @@ const SCHOOL_COLORS: Record<string, string> = {
   "aventurando": "hsl(25, 95%, 53%)",
 };
 
+const SCHOOL_OPTIONS = [
+  { value: "paulo-freire", label: "Colégio Paulo Freire" },
+  { value: "renascer", label: "Colégio Renascer" },
+  { value: "conectivo", label: "Colégio Conectivo" },
+  { value: "aventurando", label: "Colégio Aventurando" },
+];
+
 const FaturamentoProjetado = () => {
   const navigate = useNavigate();
   const { data, isLoading, error } = useFaturamentoSheets();
@@ -45,6 +53,7 @@ const FaturamentoProjetado = () => {
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [selectedSchool, setSelectedSchool] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -52,6 +61,11 @@ const FaturamentoProjetado = () => {
     if (!data?.items) return [];
     
     return data.items.filter(item => {
+      // Filter by school
+      if (selectedSchool !== "all" && item.escolaSlug !== selectedSchool) {
+        return false;
+      }
+      
       // Filter by date
       if (selectedDate && item.dataVencimento) {
         const itemDate = item.dataVencimento.split('T')[0];
@@ -78,7 +92,7 @@ const FaturamentoProjetado = () => {
       
       return true;
     });
-  }, [data?.items, selectedDate, selectedMonth, selectedYear, selectedStatus]);
+  }, [data?.items, selectedDate, selectedMonth, selectedYear, selectedStatus, selectedSchool]);
 
   const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all";
 
@@ -160,7 +174,27 @@ const FaturamentoProjetado = () => {
     setSelectedMonth("all");
     setSelectedYear("all");
     setSelectedStatus("all");
+    setSelectedSchool("all");
     setCurrentPage(1);
+  };
+
+  const exportToExcel = () => {
+    const dataToExport = filteredItems.map(item => ({
+      'Escola': item.escola,
+      'Aluno': item.nomeAluno,
+      'Responsável': item.nomeResponsavel,
+      'Vencimento': formatDate(item.dataVencimento),
+      'Valor Bruto': item.valorBruto,
+      'Desconto': item.desconto,
+      'Valor': item.valor,
+      'Série': item.serie,
+      'Status': item.status,
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Faturamento");
+    XLSX.writeFile(wb, `faturamento-projetado-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   const paginatedItems = filteredItems.slice(
@@ -397,10 +431,33 @@ const FaturamentoProjetado = () => {
         {/* Detailed Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Detalhamento</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {filteredItems.length} registros encontrados
-            </p>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <CardTitle>Detalhamento</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {filteredItems.length} registros encontrados
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Select value={selectedSchool} onValueChange={setSelectedSchool}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Todas as escolas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as escolas</SelectItem>
+                    {SCHOOL_OPTIONS.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={exportToExcel} variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" />
+                  Exportar Excel
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="rounded-md border overflow-x-auto">
