@@ -114,8 +114,11 @@ const FaturamentoProjetado = () => {
     const monthlyData: Record<string, Record<string, number>> = {};
     
     data.items.forEach(item => {
-      if (!item.dataVencimento) return;
+      if (!item.dataVencimento || item.dataVencimento.length < 7) return;
       const monthKey = item.dataVencimento.substring(0, 7); // YYYY-MM
+      
+      // Validate format YYYY-MM
+      if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
       
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = {
@@ -131,13 +134,22 @@ const FaturamentoProjetado = () => {
     
     return Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, values]) => ({
-        month: format(parseISO(`${month}-01`), "MMM/yy", { locale: ptBR }),
-        "Paulo Freire": values["paulo-freire"],
-        "Renascer": values["renascer"],
-        "Conectivo": values["conectivo"],
-        "Aventurando": values["aventurando"],
-      }));
+      .map(([month, values]) => {
+        try {
+          const date = parseISO(`${month}-01`);
+          if (isNaN(date.getTime())) return null;
+          return {
+            month: format(date, "MMM/yy", { locale: ptBR }),
+            "Paulo Freire": values["paulo-freire"],
+            "Renascer": values["renascer"],
+            "Conectivo": values["conectivo"],
+            "Aventurando": values["aventurando"],
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
   }, [data?.items]);
 
   const clearFilters = () => {
