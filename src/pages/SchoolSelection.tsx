@@ -8,7 +8,8 @@ import conectivoLogo from "@/assets/colegio-conectivo.png";
 import exodusLogo from "@/assets/colegio-exodus.png";
 import cristaGomesLogo from "@/assets/colegio-crista-gomes.png";
 import redeBloomLogo from "@/assets/rede-bloom.png";
-import { Loader2 } from "lucide-react";
+import { Loader2, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface School {
   id: string;
@@ -88,6 +89,15 @@ const SchoolSelection = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
+      <Button
+        onClick={() => navigate("/faturamento-projetado")}
+        className="mb-6 gap-2"
+        size="lg"
+      >
+        <TrendingUp className="h-5 w-5" />
+        Faturamento Projetado - Escolas
+      </Button>
+      
       <h1 className="text-3xl font-bold text-foreground mb-8 text-center">
         Selecione a escola para visualizar
       </h1>
