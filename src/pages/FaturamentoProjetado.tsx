@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, Calendar, TrendingUp, Users, FileText, DollarSign, Loader2, Download } from "lucide-react";
+import { ArrowLeft, Calendar, TrendingUp, Users, FileText, DollarSign, Loader2, Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,7 +47,11 @@ const SCHOOL_OPTIONS = [
 
 const FaturamentoProjetado = () => {
   const navigate = useNavigate();
-  const { data, isLoading, error } = useFaturamentoSheets();
+  const { data, isLoading, error, refetch, isFetching } = useFaturamentoSheets();
+
+  const handleRefresh = async () => {
+    await refetch();
+  };
   
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
@@ -301,13 +305,23 @@ const FaturamentoProjetado = () => {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/schools")}>
-            <ArrowLeft className="h-5 w-5" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/schools")}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+              Faturamento Projetado
+            </h1>
+          </div>
+          <Button 
+            variant="outline" 
+            onClick={handleRefresh}
+            disabled={isFetching}
+          >
+            <RefreshCw className={cn("h-4 w-4 mr-2", isFetching && "animate-spin")} />
+            {isFetching ? "Atualizando..." : "Atualizar"}
           </Button>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-            Faturamento Projetado
-          </h1>
         </div>
 
         {/* Filters */}
