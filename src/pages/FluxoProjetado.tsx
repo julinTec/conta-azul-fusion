@@ -91,6 +91,10 @@ const FluxoProjetado = () => {
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [inadimplenciaPercent, setInadimplenciaPercent] = useState<string>("");
   
+  // Matrix states
+  const [saldoInicial, setSaldoInicial] = useState<string>("");
+  const [matrixSchool, setMatrixSchool] = useState<string>("all");
+  
   // Graph starts with current month selected
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
   const [graphMonth, setGraphMonth] = useState<string>(currentMonth);
@@ -207,6 +211,64 @@ const FluxoProjetado = () => {
       };
     });
   }, [filteredFaturamento, filteredDespesas, inadimplenciaPercent]);
+
+  // Matrix data - daily cash flow with cumulative balance
+  const matrixData = useMemo(() => {
+    // Filter faturamento by matrix school and 2026+
+    const fatItems = (faturamentoData?.items || []).filter(item => {
+      if (!item.dataVencimento) return false;
+      const year = parseInt(item.dataVencimento.substring(0, 4), 10);
+      if (year < 2026) return false;
+      if (matrixSchool !== "all" && item.escolaSlug !== matrixSchool) return false;
+      return true;
+    });
+
+    // Filter despesas by matrix school and 2026+
+    const despItems = (despesasData?.items || []).filter(item => {
+      if (!item.dataVencimento) return false;
+      const year = parseInt(item.dataVencimento.substring(0, 4), 10);
+      if (year < 2026) return false;
+      if (matrixSchool !== "all" && item.escolaSlug !== matrixSchool) return false;
+      return true;
+    });
+
+    // Group by date
+    const dailyData: Record<string, { entradas: number; saidas: number }> = {};
+
+    fatItems.forEach(item => {
+      const date = item.dataVencimento;
+      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0 };
+      dailyData[date].entradas += item.valor;
+    });
+
+    despItems.forEach(item => {
+      const date = item.dataVencimento;
+      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0 };
+      dailyData[date].saidas += item.valor;
+    });
+
+    // Sort by date
+    const sortedDates = Object.keys(dailyData).sort();
+
+    // Calculate cumulative balance
+    const saldoInicialValue = parseFloat(saldoInicial) || 0;
+    let saldoAcumulado = saldoInicialValue;
+
+    return sortedDates.map((date) => {
+      const entradas = dailyData[date].entradas;
+      const saidas = dailyData[date].saidas;
+      const saldoDia = entradas - saidas;
+      saldoAcumulado += saldoDia;
+
+      return {
+        date,
+        displayDate: format(parseISO(date), "dd/MM/yyyy", { locale: ptBR }),
+        entradas,
+        saidas: -saidas, // Negative for display
+        saldo: saldoAcumulado,
+      };
+    });
+  }, [faturamentoData, despesasData, matrixSchool, saldoInicial]);
 
   // Chart data - filtered by graph filters
   const chartData = useMemo(() => {
@@ -340,6 +402,103 @@ const FluxoProjetado = () => {
           Atualizar
         </Button>
       </div>
+
+      {/* Cash Flow Matrix */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardTitle>Fluxo de Caixa Diário</CardTitle>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Saldo Inicial</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={saldoInicial}
+                  onChange={(e) => setSaldoInicial(e.target.value)}
+                  className="w-[150px]"
+                />
+              </div>
+              <Select value={matrixSchool} onValueChange={setMatrixSchool}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as escolas</SelectItem>
+                  {SCHOOLS.map((school) => (
+                    <SelectItem key={school.slug} value={school.slug}>
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {matrixData.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">
+              Nenhum dado disponível para exibição
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-background min-w-[100px] z-10">Tipo</TableHead>
+                    {matrixData.map((item) => (
+                      <TableHead key={item.date} className="text-center min-w-[120px]">
+                        {item.displayDate}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* Entradas row (green) */}
+                  <TableRow>
+                    <TableCell className="sticky left-0 bg-background font-medium text-green-600 z-10">
+                      Entradas
+                    </TableCell>
+                    {matrixData.map((item) => (
+                      <TableCell key={item.date} className="text-center text-green-600">
+                        {formatCurrency(item.entradas)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  {/* Saídas row (red, negative values) */}
+                  <TableRow>
+                    <TableCell className="sticky left-0 bg-background font-medium text-red-600 z-10">
+                      Saídas
+                    </TableCell>
+                    {matrixData.map((item) => (
+                      <TableCell key={item.date} className="text-center text-red-600">
+                        {formatCurrency(item.saidas)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                  {/* Saldo row (cumulative) */}
+                  <TableRow className="border-t-2 font-bold">
+                    <TableCell className="sticky left-0 bg-background font-bold z-10">
+                      Saldo
+                    </TableCell>
+                    {matrixData.map((item) => (
+                      <TableCell
+                        key={item.date}
+                        className={`text-center font-bold ${
+                          item.saldo >= 0 ? "text-blue-600" : "text-red-600"
+                        }`}
+                      >
+                        {formatCurrency(item.saldo)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Global Filters */}
       <Card className="mb-6">
