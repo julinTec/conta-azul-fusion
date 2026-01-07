@@ -29,7 +29,7 @@ const MONTHS = [
   { value: "12", label: "Dezembro" },
 ];
 
-const YEARS = ["2025", "2026", "2027"];
+const YEARS = ["2026", "2027"];
 
 const SCHOOL_COLORS: Record<string, string> = {
   "paulo-freire": "hsl(var(--primary))",
@@ -73,6 +73,7 @@ const FaturamentoProjetado = () => {
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedSchool, setSelectedSchool] = useState<string>("all");
+  const [tableStatusFilter, setTableStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -80,6 +81,12 @@ const FaturamentoProjetado = () => {
     if (!data?.items) return [];
     
     return data.items.filter(item => {
+      // Filter only 2026+ data
+      if (item.dataVencimento) {
+        const itemYear = parseInt(item.dataVencimento.substring(0, 4), 10);
+        if (itemYear < 2026) return false;
+      }
+      
       // Filter by school
       if (selectedSchool !== "all" && item.escolaSlug !== selectedSchool) {
         return false;
@@ -159,8 +166,13 @@ const FaturamentoProjetado = () => {
     
     const monthlyData: Record<string, Record<string, number>> = {};
     
-    data.items.forEach(item => {
-      if (!item.dataVencimento || item.dataVencimento.length < 7) return;
+    data.items
+      .filter(item => {
+        if (!item.dataVencimento || item.dataVencimento.length < 7) return false;
+        const itemYear = parseInt(item.dataVencimento.substring(0, 4), 10);
+        return itemYear >= 2026;
+      })
+      .forEach(item => {
       const monthKey = item.dataVencimento.substring(0, 7); // YYYY-MM
       
       // Validate format YYYY-MM
@@ -207,10 +219,13 @@ const FaturamentoProjetado = () => {
     const monthlyData: Record<string, Record<string, number>> = {};
     
     data.items
-      .filter(item => 
-        item.status?.toLowerCase() === "pendente" && 
-        isOverdue(item.dataVencimento)
-      )
+      .filter(item => {
+        if (!item.dataVencimento || item.dataVencimento.length < 7) return false;
+        const itemYear = parseInt(item.dataVencimento.substring(0, 4), 10);
+        return itemYear >= 2026 && 
+               item.status?.toLowerCase() === "pendente" && 
+               isOverdue(item.dataVencimento);
+      })
       .forEach(item => {
         if (!item.dataVencimento || item.dataVencimento.length < 7) return;
         const monthKey = item.dataVencimento.substring(0, 7); // YYYY-MM
@@ -280,12 +295,20 @@ const FaturamentoProjetado = () => {
     XLSX.writeFile(wb, `faturamento-projetado-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
-  const paginatedItems = filteredItems.slice(
+  // Table-specific status filter
+  const tableFilteredItems = useMemo(() => {
+    if (tableStatusFilter === "all") return filteredItems;
+    return filteredItems.filter(item => 
+      item.status?.toLowerCase() === tableStatusFilter.toLowerCase()
+    );
+  }, [filteredItems, tableStatusFilter]);
+
+  const paginatedItems = tableFilteredItems.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
 
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const totalPages = Math.ceil(tableFilteredItems.length / itemsPerPage);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -533,7 +556,7 @@ const FaturamentoProjetado = () => {
               <div>
                 <CardTitle>Detalhamento</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  {filteredItems.length} registros encontrados
+                  {tableFilteredItems.length} registros encontrados
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -548,6 +571,16 @@ const FaturamentoProjetado = () => {
                         {option.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                <Select value={tableStatusFilter} onValueChange={setTableStatusFilter}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Todos os status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="pago">Pago</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button onClick={exportToExcel} variant="outline" className="gap-2">
