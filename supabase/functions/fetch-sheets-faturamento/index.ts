@@ -7,11 +7,11 @@ const corsHeaders = {
 
 const SPREADSHEET_ID = '1sJ4Vz8LYG5K3x9kiicqic9YJRxGFNnw6Qp2RuEbilr0';
 const SCHOOLS = [
-  { slug: 'paulo-freire', name: 'Colégio Paulo Freire' },
-  { slug: 'renascer', name: 'Colégio Renascer' },
-  { slug: 'conectivo', name: 'Colégio Conectivo' },
-  { slug: 'aventurando', name: 'Colégio Aventurando' },
-  { slug: 'crista-gomes', name: 'Colégio Cristã Gomes' },
+  { slug: 'paulo-freire', sheetName: 'paulo-freire', name: 'Colégio Paulo Freire' },
+  { slug: 'renascer', sheetName: 'renascer', name: 'Colégio Renascer' },
+  { slug: 'conectivo', sheetName: 'conectivo', name: 'Colégio Conectivo' },
+  { slug: 'aventurando', sheetName: 'aventurando', name: 'Colégio Aventurando' },
+  { slug: 'crista-gomes', sheetName: 'cristã-gomes', name: 'Colégio Cristã Gomes' },
 ];
 
 interface FaturamentoItem {
@@ -119,10 +119,10 @@ function findColumnIndex(cols: { label: string }[], ...possibleLabels: string[])
   return -1;
 }
 
-async function fetchSchoolData(schoolSlug: string, schoolName: string): Promise<FaturamentoItem[]> {
-  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(schoolSlug)}`;
+async function fetchSchoolData(schoolSlug: string, sheetName: string, schoolName: string): Promise<FaturamentoItem[]> {
+  const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
   
-  console.log(`Fetching data for ${schoolName} from tab: ${schoolSlug}`);
+  console.log(`Fetching data for ${schoolName} from sheet: ${sheetName} (slug: ${schoolSlug})`);
   
   try {
     const response = await fetch(url);
@@ -199,7 +199,9 @@ async function fetchSchoolData(schoolSlug: string, schoolName: string): Promise<
       });
     }
     
-    console.log(`${schoolSlug}: ${items.length} valid items, ${invalidDates} skipped (invalid dates)`);
+    const sampleStudents = items.slice(0, 3).map(i => i.nomeAluno);
+    console.log(`${schoolSlug}: ${items.length} valid items, ${invalidDates} with invalid dates (kept)`);
+    console.log(`${schoolSlug} sample students: ${sampleStudents.join(', ')}`);
     
     return items;
   } catch (error) {
@@ -217,7 +219,7 @@ serve(async (req) => {
     console.log('Fetching faturamento data from all schools...');
     
     const allDataPromises = SCHOOLS.map(school => 
-      fetchSchoolData(school.slug, school.name)
+      fetchSchoolData(school.slug, school.sheetName, school.name)
     );
     
     const allResults = await Promise.all(allDataPromises);
