@@ -103,12 +103,13 @@ const FaturamentoProjetado = () => {
   const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all" || selectedSchool !== "all";
 
   const filteredResumos = useMemo(() => {
-    const schools = ["paulo-freire", "renascer", "conectivo", "aventurando"];
+    const schools = ["paulo-freire", "renascer", "conectivo", "aventurando", "crista-gomes"];
     const schoolNames: Record<string, string> = {
       "paulo-freire": "Colégio Paulo Freire",
       "renascer": "Colégio Renascer",
       "conectivo": "Colégio Conectivo",
       "aventurando": "Colégio Aventurando",
+      "crista-gomes": "Colégio Cristã Gomes",
     };
     
     // Use filteredItems if filters are active, otherwise use all items
@@ -155,6 +156,7 @@ const FaturamentoProjetado = () => {
           "renascer": 0,
           "conectivo": 0,
           "aventurando": 0,
+          "crista-gomes": 0,
         };
       }
       
@@ -173,6 +175,7 @@ const FaturamentoProjetado = () => {
             "Renascer": values["renascer"],
             "Conectivo": values["conectivo"],
             "Aventurando": values["aventurando"],
+            "Cristã Gomes": values["crista-gomes"],
           };
         } catch {
           return null;
@@ -202,6 +205,7 @@ const FaturamentoProjetado = () => {
             "renascer": 0,
             "conectivo": 0,
             "aventurando": 0,
+            "crista-gomes": 0,
           };
         }
         
@@ -220,6 +224,7 @@ const FaturamentoProjetado = () => {
             "Renascer": values["renascer"],
             "Conectivo": values["conectivo"],
             "Aventurando": values["aventurando"],
+            "Cristã Gomes": values["crista-gomes"],
           };
         } catch {
           return null;
@@ -470,6 +475,7 @@ const FaturamentoProjetado = () => {
                   <Bar dataKey="Renascer" fill={SCHOOL_COLORS["renascer"]} />
                   <Bar dataKey="Conectivo" fill={SCHOOL_COLORS["conectivo"]} />
                   <Bar dataKey="Aventurando" fill={SCHOOL_COLORS["aventurando"]} />
+                  <Bar dataKey="Cristã Gomes" fill={SCHOOL_COLORS["crista-gomes"]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -494,6 +500,7 @@ const FaturamentoProjetado = () => {
                   <Line type="monotone" dataKey="Renascer" stroke={SCHOOL_COLORS["renascer"]} strokeWidth={2} />
                   <Line type="monotone" dataKey="Conectivo" stroke={SCHOOL_COLORS["conectivo"]} strokeWidth={2} />
                   <Line type="monotone" dataKey="Aventurando" stroke={SCHOOL_COLORS["aventurando"]} strokeWidth={2} />
+                  <Line type="monotone" dataKey="Cristã Gomes" stroke={SCHOOL_COLORS["crista-gomes"]} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
