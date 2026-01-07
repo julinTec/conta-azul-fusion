@@ -116,9 +116,8 @@ const SchoolSelection = () => {
         </Button>
         <Button
           onClick={() => navigate("/fluxo-projetado")}
-          className="gap-2"
+          className="gap-2 bg-red-600 hover:bg-red-700 text-white"
           size="lg"
-          variant="outline"
         >
           <ArrowLeftRight className="h-5 w-5" />
           Fluxo Projetado - Escolas
