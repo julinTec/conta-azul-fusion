@@ -8,7 +8,7 @@ import conectivoLogo from "@/assets/colegio-conectivo.png";
 import exodusLogo from "@/assets/colegio-exodus.png";
 import cristaGomesLogo from "@/assets/colegio-crista-gomes.png";
 import redeBloomLogo from "@/assets/rede-bloom.png";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Loader2, TrendingUp, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface School {
@@ -79,6 +79,11 @@ const SchoolSelection = () => {
     navigate(`/school/${slug}/dashboard`);
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth", { replace: true });
+  };
+
   if (checkingAuth || loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -88,7 +93,18 @@ const SchoolSelection = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative">
+      <div className="absolute top-4 right-4">
+        <Button
+          variant="outline"
+          onClick={handleSignOut}
+          className="gap-2"
+        >
+          <LogOut className="h-4 w-4" />
+          Sair
+        </Button>
+      </div>
+      
       <Button
         onClick={() => navigate("/faturamento-projetado")}
         className="mb-6 gap-2"
