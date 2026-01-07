@@ -8,7 +8,7 @@ import conectivoLogo from "@/assets/colegio-conectivo.png";
 import exodusLogo from "@/assets/colegio-exodus.png";
 import cristaGomesLogo from "@/assets/colegio-crista-gomes.png";
 import redeBloomLogo from "@/assets/rede-bloom.png";
-import { Loader2, TrendingUp, LogOut } from "lucide-react";
+import { Loader2, TrendingUp, LogOut, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface School {
@@ -105,14 +105,25 @@ const SchoolSelection = () => {
         </Button>
       </div>
       
-      <Button
-        onClick={() => navigate("/faturamento-projetado")}
-        className="mb-6 gap-2"
-        size="lg"
-      >
-        <TrendingUp className="h-5 w-5" />
-        Faturamento Projetado - Escolas
-      </Button>
+      <div className="flex flex-wrap gap-4 mb-6">
+        <Button
+          onClick={() => navigate("/faturamento-projetado")}
+          className="gap-2"
+          size="lg"
+        >
+          <TrendingUp className="h-5 w-5" />
+          Faturamento Projetado - Escolas
+        </Button>
+        <Button
+          onClick={() => navigate("/fluxo-projetado")}
+          className="gap-2"
+          size="lg"
+          variant="outline"
+        >
+          <ArrowLeftRight className="h-5 w-5" />
+          Fluxo Projetado - Escolas
+        </Button>
+      </div>
       
       <h1 className="text-3xl font-bold text-foreground mb-8 text-center">
         Selecione a escola para visualizar

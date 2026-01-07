@@ -14,6 +14,7 @@ import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 import SchoolSelection from "./pages/SchoolSelection";
 import FaturamentoProjetado from "./pages/FaturamentoProjetado";
+import FluxoProjetado from "./pages/FluxoProjetado";
 import { AdminGuard } from "./components/AdminGuard";
 import { AdminPanel } from "./components/AdminPanel";
 import { SchoolRoute } from "./components/SchoolRoute";
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/schools" element={<SchoolSelection />} />
           <Route path="/faturamento-projetado" element={<FaturamentoProjetado />} />
+          <Route path="/fluxo-projetado" element={<FluxoProjetado />} />
           
           {/* Rotas dinâmicas por escola */}
           <Route path="/school/:schoolSlug/dashboard" element={<SchoolRoute><Dashboard /></SchoolRoute>} />

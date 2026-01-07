@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.fetch-sheets-faturamento]
 verify_jwt = false
+
+[functions.fetch-sheets-despesas]
+verify_jwt = false

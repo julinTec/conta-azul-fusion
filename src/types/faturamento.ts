@@ -24,3 +24,15 @@ export interface FaturamentoData {
   items: FaturamentoItem[];
   resumos: ResumoEscola[];
 }
+
+export interface DespesaItem {
+  escola: string;
+  escolaSlug: string;
+  dataVencimento: string;
+  descricao: string;
+  valor: number;
+}
+
+export interface DespesasData {
+  items: DespesaItem[];
+}
