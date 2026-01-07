@@ -11,6 +11,7 @@ const SCHOOLS = [
   { slug: 'renascer', name: 'Colégio Renascer' },
   { slug: 'conectivo', name: 'Colégio Conectivo' },
   { slug: 'aventurando', name: 'Colégio Aventurando' },
+  { slug: 'crista-gomes', name: 'Colégio Cristã Gomes' },
 ];
 
 interface FaturamentoItem {
@@ -169,18 +170,19 @@ async function fetchSchoolData(schoolSlug: string, schoolName: string): Promise<
       if (!nomeAluno) continue; // Skip empty rows
       
       const rawDate = getValue(colDataVencimento);
-      const dataVencimento = normalizeDate(rawDate);
+      let dataVencimento = normalizeDate(rawDate);
       
+      // Check if date is valid - if not, keep the row but with empty date
       if (!dataVencimento || !/^\d{4}-\d{2}-\d{2}$/.test(dataVencimento)) {
         invalidDates++;
-        continue; // Skip rows with invalid dates
-      }
-      
-      // Validate year is reasonable (2020-2030)
-      const year = parseInt(dataVencimento.substring(0, 4));
-      if (year < 2020 || year > 2030) {
-        invalidDates++;
-        continue;
+        dataVencimento = ""; // Keep row with empty date for counts
+      } else {
+        // Validate year is reasonable (2020-2030)
+        const year = parseInt(dataVencimento.substring(0, 4));
+        if (year < 2020 || year > 2030) {
+          invalidDates++;
+          dataVencimento = ""; // Keep row with empty date for counts
+        }
       }
       
       items.push({

@@ -36,6 +36,7 @@ const SCHOOL_COLORS: Record<string, string> = {
   "renascer": "hsl(142, 76%, 36%)",
   "conectivo": "hsl(0, 84%, 60%)",
   "aventurando": "hsl(25, 95%, 53%)",
+  "crista-gomes": "hsl(280, 65%, 50%)",
 };
 
 const SCHOOL_OPTIONS = [
@@ -43,6 +44,7 @@ const SCHOOL_OPTIONS = [
   { value: "renascer", label: "Colégio Renascer" },
   { value: "conectivo", label: "Colégio Conectivo" },
   { value: "aventurando", label: "Colégio Aventurando" },
+  { value: "crista-gomes", label: "Colégio Cristã Gomes" },
 ];
 
 const FaturamentoProjetado = () => {
