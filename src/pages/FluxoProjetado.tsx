@@ -101,6 +101,7 @@ const FluxoProjetado = () => {
   const [graphYear, setGraphYear] = useState<string>("all");
   const [graphSchool, setGraphSchool] = useState<string>("all");
   const [detailView, setDetailView] = useState<string>("faturamento");
+  const [tableSchool, setTableSchool] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
   
@@ -251,7 +252,7 @@ const FluxoProjetado = () => {
     const sortedDates = Object.keys(dailyData).sort();
 
     // Calculate cumulative balance
-    const saldoInicialValue = parseFloat(saldoInicial) || 0;
+    const saldoInicialValue = parseFloat(saldoInicial.replace(/\./g, "").replace(",", ".")) || 0;
     let saldoAcumulado = saldoInicialValue;
 
     return sortedDates.map((date) => {
@@ -344,12 +345,14 @@ const FluxoProjetado = () => {
 
   // Table data
   const tableData = useMemo(() => {
-    if (detailView === "faturamento") {
-      return filteredFaturamento;
-    } else {
-      return filteredDespesas;
+    const sourceData = detailView === "faturamento" ? filteredFaturamento : filteredDespesas;
+    
+    if (tableSchool !== "all") {
+      return sourceData.filter(item => item.escolaSlug === tableSchool);
     }
-  }, [detailView, filteredFaturamento, filteredDespesas]);
+    
+    return sourceData;
+  }, [detailView, filteredFaturamento, filteredDespesas, tableSchool]);
 
   const paginatedItems = tableData.slice(
     (currentPage - 1) * itemsPerPage,
@@ -362,6 +365,13 @@ const FluxoProjetado = () => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
+    }).format(value);
+  };
+
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value);
   };
 
@@ -412,11 +422,11 @@ const FluxoProjetado = () => {
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground whitespace-nowrap">Saldo Inicial</span>
                 <Input
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   placeholder="0,00"
                   value={saldoInicial}
-                  onChange={(e) => setSaldoInicial(e.target.value)}
+                  onChange={(e) => setSaldoInicial(e.target.value.replace(/[^\d,.-]/g, ""))}
                   className="w-[150px]"
                 />
               </div>
@@ -446,9 +456,9 @@ const FluxoProjetado = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 bg-background min-w-[100px] z-10">Tipo</TableHead>
+                    <TableHead className="sticky left-0 bg-background min-w-[80px] z-10">Tipo</TableHead>
                     {matrixData.map((item) => (
-                      <TableHead key={item.date} className="text-center min-w-[120px]">
+                      <TableHead key={item.date} className="text-center min-w-[100px] whitespace-nowrap px-2">
                         {item.displayDate}
                       </TableHead>
                     ))}
@@ -461,8 +471,8 @@ const FluxoProjetado = () => {
                       Entradas
                     </TableCell>
                     {matrixData.map((item) => (
-                      <TableCell key={item.date} className="text-center text-green-600">
-                        {formatCurrency(item.entradas)}
+                      <TableCell key={item.date} className="text-center text-green-600 whitespace-nowrap px-3">
+                        {formatNumber(item.entradas)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -472,8 +482,8 @@ const FluxoProjetado = () => {
                       Saídas
                     </TableCell>
                     {matrixData.map((item) => (
-                      <TableCell key={item.date} className="text-center text-red-600">
-                        {formatCurrency(item.saidas)}
+                      <TableCell key={item.date} className="text-center text-red-600 whitespace-nowrap px-3">
+                        {formatNumber(item.saidas)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -485,11 +495,11 @@ const FluxoProjetado = () => {
                     {matrixData.map((item) => (
                       <TableCell
                         key={item.date}
-                        className={`text-center font-bold ${
+                        className={`text-center font-bold whitespace-nowrap px-3 ${
                           item.saldo >= 0 ? "text-blue-600" : "text-red-600"
                         }`}
                       >
-                        {formatCurrency(item.saldo)}
+                        {formatNumber(item.saldo)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -706,7 +716,7 @@ const FluxoProjetado = () => {
                 {tableData.length} registros encontrados
               </p>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
               <ToggleGroup
                 type="single"
                 value={detailView}
@@ -724,6 +734,19 @@ const FluxoProjetado = () => {
                   Despesas
                 </ToggleGroupItem>
               </ToggleGroup>
+              <Select value={tableSchool} onValueChange={(v) => { setTableSchool(v); setCurrentPage(1); }}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Escola" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as escolas</SelectItem>
+                  {SCHOOLS.map((school) => (
+                    <SelectItem key={school.slug} value={school.slug}>
+                      {school.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 onClick={() => {
