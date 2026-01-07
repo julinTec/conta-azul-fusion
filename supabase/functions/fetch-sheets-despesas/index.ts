@@ -4,11 +4,19 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
 const SPREADSHEET_ID = '1s0-r-kXJdTqJHUiZ9xijdLWOUX_7WClnih2C5tgNi1Q';
 const SHEET_NAME = 'CAP 2026';
+const SHEET_NAME_REFORMA = 'REFORMA';
 
 interface DespesaItem {
+  escola: string;
+  escolaSlug: string;
+  dataVencimento: string;
+  descricao: string;
+  valor: number;
+}
+
+interface ReformaItem {
   escola: string;
   escolaSlug: string;
   dataVencimento: string;
@@ -209,6 +217,85 @@ async function fetchDespesasData(): Promise<DespesaItem[]> {
   return items;
 }
 
+async function fetchReformaData(): Promise<ReformaItem[]> {
+  const items: ReformaItem[] = [];
+  
+  try {
+    const encodedSheetName = encodeURIComponent(SHEET_NAME_REFORMA);
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodedSheetName}`;
+    
+    console.log(`Fetching reforma from: ${url}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Failed to fetch reforma sheet: ${response.status}`);
+      return items;
+    }
+    
+    const text = await response.text();
+    const table = parseGvizResponse(text);
+    
+    if (!table || !table.rows) {
+      console.error('No reforma table data found');
+      return items;
+    }
+    
+    console.log(`Found ${table.rows.length} reforma rows, columns:`, table.cols.map(c => c.label));
+    
+    // Find column indices - columns: DATA DE VENCIMENTO | ESCOLA | FORNECEDOR | DESCRIÇÃO | PARC | VALOR
+    const dataColIndex = findColumnIndex(table.cols, 'data de vencimento', 'Data de Vencimento', 'DATA DE VENCIMENTO', 'data', 'Data');
+    const escolaColIndex = findColumnIndex(table.cols, 'escola', 'Escola', 'ESCOLA');
+    const descricaoColIndex = findColumnIndex(table.cols, 'descrição', 'Descrição', 'DESCRIÇÃO', 'descricao', 'Descricao');
+    const valorColIndex = findColumnIndex(table.cols, 'valor', 'Valor', 'VALOR');
+    
+    console.log(`Reforma column indices - Data: ${dataColIndex}, Escola: ${escolaColIndex}, Descrição: ${descricaoColIndex}, Valor: ${valorColIndex}`);
+    
+    if (dataColIndex === -1 || escolaColIndex === -1 || valorColIndex === -1) {
+      console.error('Required reforma columns not found');
+      return items;
+    }
+    
+    for (const row of table.rows) {
+      if (!row.c) continue;
+      
+      const dataRaw = row.c[dataColIndex]?.v;
+      const escolaRaw = row.c[escolaColIndex]?.v;
+      const descricaoRaw = row.c[descricaoColIndex]?.v;
+      const valorRaw = row.c[valorColIndex]?.v;
+      
+      const dataVencimento = normalizeDate(dataRaw);
+      const escola = String(escolaRaw || '').trim();
+      const escolaSlug = getSchoolSlug(escola);
+      const descricao = String(descricaoRaw || '').trim();
+      const valor = normalizeNumber(valorRaw); // normalizeNumber already returns Math.abs
+      
+      // Skip rows without essential data
+      if (!escolaSlug || valor === 0) continue;
+      
+      // Filter only 2026+ data
+      if (dataVencimento) {
+        const year = parseInt(dataVencimento.substring(0, 4), 10);
+        if (year < 2026) continue;
+      }
+      
+      items.push({
+        escola,
+        escolaSlug,
+        dataVencimento,
+        descricao,
+        valor,
+      });
+    }
+    
+    console.log(`Processed ${items.length} valid reforma items`);
+    
+  } catch (error) {
+    console.error('Error fetching reforma:', error);
+  }
+  
+  return items;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -218,12 +305,15 @@ serve(async (req) => {
   try {
     console.log('Starting despesas fetch...');
     
-    const items = await fetchDespesasData();
+    const [items, reformas] = await Promise.all([
+      fetchDespesasData(),
+      fetchReformaData(),
+    ]);
     
-    console.log(`Total despesas items fetched: ${items.length}`);
+    console.log(`Total despesas items fetched: ${items.length}, reforma items: ${reformas.length}`);
     
     return new Response(
-      JSON.stringify({ items }),
+      JSON.stringify({ items, reformas }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
@@ -236,7 +326,7 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
     return new Response(
-      JSON.stringify({ error: errorMessage, items: [] }),
+      JSON.stringify({ error: errorMessage, items: [], reformas: [] }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
