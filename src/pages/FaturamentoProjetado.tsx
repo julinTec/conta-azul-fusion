@@ -51,6 +51,19 @@ const FaturamentoProjetado = () => {
   const navigate = useNavigate();
   const { data, isLoading, error, refetch, isFetching } = useFaturamentoSheets();
 
+  // Helper to check if a date is overdue (before today)
+  const isOverdue = (dataVencimento: string): boolean => {
+    if (!dataVencimento || dataVencimento.length < 10) return false;
+    try {
+      const dueDate = parseISO(dataVencimento);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return dueDate < today;
+    } catch {
+      return false;
+    }
+  };
+
   const handleRefresh = async () => {
     await refetch();
   };
@@ -120,7 +133,10 @@ const FaturamentoProjetado = () => {
       const uniqueStudents = new Set(schoolItems.map(item => item.nomeAluno)).size;
       const totalFaturamento = schoolItems.reduce((sum, item) => sum + item.valor, 0);
       const totalPendente = schoolItems
-        .filter(item => item.status?.toLowerCase() === "pendente")
+        .filter(item => 
+          item.status?.toLowerCase() === "pendente" && 
+          isOverdue(item.dataVencimento)
+        )
         .reduce((sum, item) => sum + item.valor, 0);
       const totalBoletos = schoolItems.length;
       const percentualInadimplencia = totalFaturamento > 0 ? (totalPendente / totalFaturamento) * 100 : 0;
@@ -191,7 +207,10 @@ const FaturamentoProjetado = () => {
     const monthlyData: Record<string, Record<string, number>> = {};
     
     data.items
-      .filter(item => item.status?.toLowerCase() === "pendente")
+      .filter(item => 
+        item.status?.toLowerCase() === "pendente" && 
+        isOverdue(item.dataVencimento)
+      )
       .forEach(item => {
         if (!item.dataVencimento || item.dataVencimento.length < 7) return;
         const monthKey = item.dataVencimento.substring(0, 7); // YYYY-MM
