@@ -2,7 +2,8 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, RefreshCw, Loader2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, Loader2, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -70,6 +72,15 @@ const SCHOOLS = [
   { slug: "exodus", name: "Exodus" },
 ];
 
+const SCHOOL_COLORS: Record<string, string> = {
+  "paulo-freire": "border-l-blue-500",
+  "renascer": "border-l-green-500",
+  "conectivo": "border-l-purple-500",
+  "aventurando": "border-l-orange-500",
+  "crista-gomes": "border-l-pink-500",
+  "exodus": "border-l-yellow-500",
+};
+
 const FluxoProjetado = () => {
   const navigate = useNavigate();
   const { data: faturamentoData, isLoading: loadingFat, refetch: refetchFat } = useFaturamentoSheets();
@@ -78,7 +89,11 @@ const FluxoProjetado = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedYear, setSelectedYear] = useState<string>("all");
-  const [graphMonth, setGraphMonth] = useState<string>("all");
+  const [inadimplenciaPercent, setInadimplenciaPercent] = useState<string>("");
+  
+  // Graph starts with current month selected
+  const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
+  const [graphMonth, setGraphMonth] = useState<string>(currentMonth);
   const [graphYear, setGraphYear] = useState<string>("all");
   const [graphSchool, setGraphSchool] = useState<string>("all");
   const [detailView, setDetailView] = useState<string>("faturamento");
@@ -98,6 +113,7 @@ const FluxoProjetado = () => {
     setSelectedDate(undefined);
     setSelectedMonth("all");
     setSelectedYear("all");
+    setInadimplenciaPercent("");
   };
 
   // Filter faturamento data (2026+)
@@ -166,12 +182,18 @@ const FluxoProjetado = () => {
     });
   }, [despesasData, selectedDate, selectedMonth, selectedYear]);
 
-  // School summary cards
+  // School summary cards - apply inadimplência deduction to faturamento
   const schoolSummary = useMemo(() => {
+    const inadPercent = parseFloat(inadimplenciaPercent) || 0;
+    const deductionFactor = 1 - (inadPercent / 100);
+    
     return SCHOOLS.map(school => {
-      const faturamento = filteredFaturamento
+      const faturamentoBruto = filteredFaturamento
         .filter(item => item.escolaSlug === school.slug)
         .reduce((sum, item) => sum + item.valor, 0);
+      
+      // Apply deduction only to faturamento displayed in cards
+      const faturamento = faturamentoBruto * deductionFactor;
       
       const despesas = filteredDespesas
         .filter(item => item.escolaSlug === school.slug)
@@ -184,7 +206,7 @@ const FluxoProjetado = () => {
         saldo: faturamento - despesas,
       };
     });
-  }, [filteredFaturamento, filteredDespesas]);
+  }, [filteredFaturamento, filteredDespesas, inadimplenciaPercent]);
 
   // Chart data - filtered by graph filters
   const chartData = useMemo(() => {
@@ -367,6 +389,21 @@ const FluxoProjetado = () => {
               </SelectContent>
             </Select>
 
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">% Inadimplência</span>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                placeholder="0"
+                value={inadimplenciaPercent}
+                onChange={(e) => setInadimplenciaPercent(e.target.value)}
+                className="w-[100px]"
+              />
+              <span className="text-sm text-muted-foreground">%</span>
+            </div>
+
             <Button variant="ghost" onClick={clearFilters}>
               Limpar Filtros
             </Button>
@@ -377,7 +414,7 @@ const FluxoProjetado = () => {
       {/* School Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         {schoolSummary.map((school) => (
-          <Card key={school.slug}>
+          <Card key={school.slug} className={`border-l-4 ${SCHOOL_COLORS[school.slug] || "border-l-gray-500"}`}>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">{school.name}</CardTitle>
             </CardHeader>
@@ -510,23 +547,56 @@ const FluxoProjetado = () => {
                 {tableData.length} registros encontrados
               </p>
             </div>
-            <ToggleGroup
-              type="single"
-              value={detailView}
-              onValueChange={(value) => {
-                if (value) {
-                  setDetailView(value);
-                  setCurrentPage(1);
-                }
-              }}
-            >
-              <ToggleGroupItem value="faturamento" className="px-4">
-                Faturamento
-              </ToggleGroupItem>
-              <ToggleGroupItem value="despesas" className="px-4">
-                Despesas
-              </ToggleGroupItem>
-            </ToggleGroup>
+            <div className="flex items-center gap-4">
+              <ToggleGroup
+                type="single"
+                value={detailView}
+                onValueChange={(value) => {
+                  if (value) {
+                    setDetailView(value);
+                    setCurrentPage(1);
+                  }
+                }}
+              >
+                <ToggleGroupItem value="faturamento" className="px-4">
+                  Faturamento
+                </ToggleGroupItem>
+                <ToggleGroupItem value="despesas" className="px-4">
+                  Despesas
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const exportData = tableData.map(item => {
+                    if (detailView === "faturamento") {
+                      return {
+                        Escola: item.escola,
+                        "Data de Vencimento": formatDate(item.dataVencimento),
+                        Valor: item.valor,
+                        Série: "serie" in item ? (item as any).serie || "" : "",
+                        Status: "status" in item ? (item as any).status || "" : "",
+                      };
+                    } else {
+                      return {
+                        Escola: item.escola,
+                        "Data de Vencimento": formatDate(item.dataVencimento),
+                        Valor: item.valor,
+                        Descrição: "descricao" in item ? (item as any).descricao || "" : "",
+                      };
+                    }
+                  });
+                  const ws = XLSX.utils.json_to_sheet(exportData);
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, detailView === "faturamento" ? "Faturamento" : "Despesas");
+                  XLSX.writeFile(wb, `fluxo-projetado-${detailView}-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+                }}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Exportar Excel
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
