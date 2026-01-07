@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -94,6 +96,7 @@ const FluxoProjetado = () => {
   // Matrix states
   const [saldoInicial, setSaldoInicial] = useState<string>("");
   const [matrixSchool, setMatrixSchool] = useState<string>("all");
+  const [showReformas, setShowReformas] = useState<boolean>(true);
   
   // Graph starts with current month selected
   const currentMonth = String(new Date().getMonth() + 1).padStart(2, "0");
@@ -233,19 +236,36 @@ const FluxoProjetado = () => {
       return true;
     });
 
+    // Filter reformas by matrix school and 2026+ (if toggle is active)
+    const reformaItems = showReformas
+      ? (despesasData?.reformas || []).filter(item => {
+          if (!item.dataVencimento) return false;
+          const year = parseInt(item.dataVencimento.substring(0, 4), 10);
+          if (year < 2026) return false;
+          if (matrixSchool !== "all" && item.escolaSlug !== matrixSchool) return false;
+          return true;
+        })
+      : [];
+
     // Group by date
-    const dailyData: Record<string, { entradas: number; saidas: number }> = {};
+    const dailyData: Record<string, { entradas: number; saidas: number; reformas: number }> = {};
 
     fatItems.forEach(item => {
       const date = item.dataVencimento;
-      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0 };
+      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0, reformas: 0 };
       dailyData[date].entradas += item.valor;
     });
 
     despItems.forEach(item => {
       const date = item.dataVencimento;
-      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0 };
+      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0, reformas: 0 };
       dailyData[date].saidas += item.valor;
+    });
+
+    reformaItems.forEach(item => {
+      const date = item.dataVencimento;
+      if (!dailyData[date]) dailyData[date] = { entradas: 0, saidas: 0, reformas: 0 };
+      dailyData[date].reformas += item.valor;
     });
 
     // Sort by date
@@ -258,7 +278,8 @@ const FluxoProjetado = () => {
     return sortedDates.map((date) => {
       const entradas = dailyData[date].entradas;
       const saidas = dailyData[date].saidas;
-      const saldoDia = entradas - saidas;
+      const reformas = dailyData[date].reformas;
+      const saldoDia = entradas - saidas - reformas; // Include reformas as outflow
       saldoAcumulado += saldoDia;
 
       return {
@@ -266,10 +287,11 @@ const FluxoProjetado = () => {
         displayDate: format(parseISO(date), "dd/MM/yyyy", { locale: ptBR }),
         entradas,
         saidas: -saidas, // Negative for display
+        reformas: -reformas, // Negative for display
         saldo: saldoAcumulado,
       };
     });
-  }, [faturamentoData, despesasData, matrixSchool, saldoInicial]);
+  }, [faturamentoData, despesasData, matrixSchool, saldoInicial, showReformas]);
 
   // Chart data - filtered by graph filters
   const chartData = useMemo(() => {
@@ -443,6 +465,16 @@ const FluxoProjetado = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="show-reformas"
+                  checked={showReformas}
+                  onCheckedChange={setShowReformas}
+                />
+                <Label htmlFor="show-reformas" className="text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
+                  Obras e Reformas
+                </Label>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -487,6 +519,19 @@ const FluxoProjetado = () => {
                       </TableCell>
                     ))}
                   </TableRow>
+                  {/* Obras e Reformas row (orange, negative values) - conditional */}
+                  {showReformas && (
+                    <TableRow>
+                      <TableCell className="sticky left-0 bg-background font-medium text-orange-600 z-10">
+                        Obras e Reformas
+                      </TableCell>
+                      {matrixData.map((item) => (
+                        <TableCell key={item.date} className="text-center text-orange-600 whitespace-nowrap px-3">
+                          {formatNumber(item.reformas)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  )}
                   {/* Saldo row (cumulative) */}
                   <TableRow className="border-t-2 font-bold">
                     <TableCell className="sticky left-0 bg-background font-bold z-10">

@@ -33,6 +33,15 @@ export interface DespesaItem {
   valor: number;
 }
 
+export interface ReformaItem {
+  escola: string;
+  escolaSlug: string;
+  dataVencimento: string;
+  descricao: string;
+  valor: number;
+}
+
 export interface DespesasData {
   items: DespesaItem[];
+  reformas: ReformaItem[];
 }
