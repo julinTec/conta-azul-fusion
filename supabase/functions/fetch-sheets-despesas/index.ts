@@ -34,6 +34,7 @@ const SCHOOL_MAPPING: Record<string, string> = {
   'PAULO FREIRE': 'paulo-freire',
   'CONECTIVO': 'conectivo',
   'AVENTURANDO': 'aventurando',
+  'CARPE DIEM': 'carpe-diem',
 };
 
 function excelSerialToDate(serial: number): string {
@@ -65,12 +66,22 @@ function normalizeDate(value: unknown): string {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
   
-  // Handle dd/MM/yyyy format
+  // Handle dd/MM/yyyy format (4-digit year)
   const brMatch = strValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (brMatch) {
     const day = brMatch[1].padStart(2, '0');
     const month = brMatch[2].padStart(2, '0');
     const year = brMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  
+  // Handle dd/MM/yy format (2-digit year)
+  const brMatch2Digit = strValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+  if (brMatch2Digit) {
+    const day = brMatch2Digit[1].padStart(2, '0');
+    const month = brMatch2Digit[2].padStart(2, '0');
+    const yearShort = brMatch2Digit[3];
+    const year = `20${yearShort}`;
     return `${year}-${month}-${day}`;
   }
   

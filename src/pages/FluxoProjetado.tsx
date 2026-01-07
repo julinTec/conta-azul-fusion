@@ -72,6 +72,7 @@ const SCHOOLS = [
   { slug: "aventurando", name: "Aventurando" },
   { slug: "crista-gomes", name: "Cristã Gomes" },
   { slug: "exodus", name: "Exodus" },
+  { slug: "carpe-diem", name: "Carpe Diem" },
 ];
 
 const SCHOOL_COLORS: Record<string, string> = {
@@ -81,6 +82,7 @@ const SCHOOL_COLORS: Record<string, string> = {
   "aventurando": "border-l-orange-500",
   "crista-gomes": "border-l-pink-500",
   "exodus": "border-l-yellow-500",
+  "carpe-diem": "border-l-cyan-500",
 };
 
 const FluxoProjetado = () => {
