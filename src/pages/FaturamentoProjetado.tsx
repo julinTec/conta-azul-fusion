@@ -37,6 +37,7 @@ const SCHOOL_COLORS: Record<string, string> = {
   "conectivo": "hsl(0, 84%, 60%)",
   "aventurando": "hsl(25, 95%, 53%)",
   "crista-gomes": "hsl(280, 65%, 50%)",
+  "exodus": "hsl(45, 93%, 47%)",
 };
 
 const SCHOOL_OPTIONS = [
@@ -45,6 +46,7 @@ const SCHOOL_OPTIONS = [
   { value: "conectivo", label: "Colégio Conectivo" },
   { value: "aventurando", label: "Colégio Aventurando" },
   { value: "crista-gomes", label: "Colégio Cristã Gomes" },
+  { value: "exodus", label: "Colégio Exodus" },
 ];
 
 const FaturamentoProjetado = () => {
@@ -123,13 +125,14 @@ const FaturamentoProjetado = () => {
   const hasActiveFilters = selectedDate || selectedMonth !== "all" || selectedYear !== "all" || selectedStatus !== "all" || selectedSchool !== "all";
 
   const filteredResumos = useMemo(() => {
-    const schools = ["paulo-freire", "renascer", "conectivo", "aventurando", "crista-gomes"];
+    const schools = ["paulo-freire", "renascer", "conectivo", "aventurando", "crista-gomes", "exodus"];
     const schoolNames: Record<string, string> = {
       "paulo-freire": "Colégio Paulo Freire",
       "renascer": "Colégio Renascer",
       "conectivo": "Colégio Conectivo",
       "aventurando": "Colégio Aventurando",
       "crista-gomes": "Colégio Cristã Gomes",
+      "exodus": "Colégio Exodus",
     };
     
     // Use filteredItems if filters are active, otherwise use all items
@@ -185,6 +188,7 @@ const FaturamentoProjetado = () => {
           "conectivo": 0,
           "aventurando": 0,
           "crista-gomes": 0,
+          "exodus": 0,
         };
       }
       
@@ -204,6 +208,7 @@ const FaturamentoProjetado = () => {
             "Conectivo": values["conectivo"],
             "Aventurando": values["aventurando"],
             "Cristã Gomes": values["crista-gomes"],
+            "Exodus": values["exodus"],
           };
         } catch {
           return null;
@@ -240,6 +245,7 @@ const FaturamentoProjetado = () => {
             "conectivo": 0,
             "aventurando": 0,
             "crista-gomes": 0,
+            "exodus": 0,
           };
         }
         
@@ -259,6 +265,7 @@ const FaturamentoProjetado = () => {
             "Conectivo": values["conectivo"],
             "Aventurando": values["aventurando"],
             "Cristã Gomes": values["crista-gomes"],
+            "Exodus": values["exodus"],
           };
         } catch {
           return null;
@@ -518,6 +525,7 @@ const FaturamentoProjetado = () => {
                   <Bar dataKey="Conectivo" fill={SCHOOL_COLORS["conectivo"]} />
                   <Bar dataKey="Aventurando" fill={SCHOOL_COLORS["aventurando"]} />
                   <Bar dataKey="Cristã Gomes" fill={SCHOOL_COLORS["crista-gomes"]} />
+                  <Bar dataKey="Exodus" fill={SCHOOL_COLORS["exodus"]} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -543,6 +551,7 @@ const FaturamentoProjetado = () => {
                   <Line type="monotone" dataKey="Conectivo" stroke={SCHOOL_COLORS["conectivo"]} strokeWidth={2} />
                   <Line type="monotone" dataKey="Aventurando" stroke={SCHOOL_COLORS["aventurando"]} strokeWidth={2} />
                   <Line type="monotone" dataKey="Cristã Gomes" stroke={SCHOOL_COLORS["crista-gomes"]} strokeWidth={2} />
+                  <Line type="monotone" dataKey="Exodus" stroke={SCHOOL_COLORS["exodus"]} strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
