@@ -12,6 +12,7 @@ const SCHOOLS = [
   { slug: 'conectivo', sheetName: 'conectivo', name: 'Colégio Conectivo' },
   { slug: 'aventurando', sheetName: 'aventurando', name: 'Colégio Aventurando' },
   { slug: 'crista-gomes', sheetName: 'cristã-gomes', name: 'Colégio Cristã Gomes' },
+  { slug: 'exodus', sheetName: 'exodus', name: 'Colégio Exodus' },
 ];
 
 interface FaturamentoItem {
