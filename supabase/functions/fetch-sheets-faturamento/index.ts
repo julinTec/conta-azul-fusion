@@ -92,7 +92,7 @@ function normalizeNumber(value: unknown): number {
   return isNaN(num) ? 0 : num;
 }
 
-function parseGvizResponse(text: string): { cols: { label: string }[]; rows: { c: ({ v: unknown } | null)[] }[] } | null {
+function parseGvizResponse(text: string): { cols: { label: string }[]; rows: { c: ({ v: unknown; f?: string } | null)[] }[] } | null {
   // gviz returns: google.visualization.Query.setResponse({...})
   const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]+)\);?$/);
   if (!match) {
@@ -144,6 +144,11 @@ async function fetchSchoolData(schoolSlug: string, sheetName: string, schoolName
     const cols = table.cols;
     console.log(`Columns for ${schoolSlug}:`, cols.map(c => c.label).join(', '));
     
+    // Debug: log first row structure for troubleshooting
+    if (table.rows.length > 0) {
+      console.log(`${schoolSlug} first row raw:`, JSON.stringify(table.rows[0]));
+    }
+    
     const colNomeAluno = findColumnIndex(cols, 'Nome do Aluno', 'Aluno', 'Nome');
     const colNomeResponsavel = findColumnIndex(cols, 'Nome do Responsável', 'Responsável', 'Nome Responsável');
     const colDataVencimento = findColumnIndex(cols, 'Data de vencimento', 'Data Vencimento', 'Vencimento');
@@ -162,9 +167,11 @@ async function fetchSchoolData(schoolSlug: string, sheetName: string, schoolName
       if (!row.c) continue;
       
       const getValue = (idx: number): unknown => {
-        if (idx === -1 || !row.c[idx]) return null;
-        // gviz can have 'v' (value) and 'f' (formatted)
-        return row.c[idx]?.v ?? null;
+        if (idx === -1) return null;
+        const cell = row.c?.[idx];
+        if (!cell) return null;
+        // Try 'v' (value) first, then 'f' (formatted) as fallback
+        return cell.v ?? cell.f ?? null;
       };
       
       const nomeAluno = String(getValue(colNomeAluno) || '').trim();
