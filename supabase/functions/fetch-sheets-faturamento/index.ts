@@ -174,8 +174,12 @@ async function fetchSchoolData(schoolSlug: string, sheetName: string, schoolName
         return cell.v ?? cell.f ?? null;
       };
       
-      const nomeAluno = String(getValue(colNomeAluno) || '').trim();
-      if (!nomeAluno) continue; // Skip empty rows
+      const nomeAlunoRaw = String(getValue(colNomeAluno) || '').trim();
+      const nomeResponsavelRaw = String(getValue(colNomeResponsavel) || '').trim();
+      
+      // Use aluno name, fallback to responsavel name (exodus uses responsavel)
+      const nomeBase = nomeAlunoRaw || nomeResponsavelRaw;
+      if (!nomeBase) continue; // Skip truly empty rows
       
       const rawDate = getValue(colDataVencimento);
       let dataVencimento = normalizeDate(rawDate);
@@ -196,8 +200,8 @@ async function fetchSchoolData(schoolSlug: string, sheetName: string, schoolName
       items.push({
         escola: schoolName,
         escolaSlug: schoolSlug,
-        nomeAluno,
-        nomeResponsavel: String(getValue(colNomeResponsavel) || '').trim(),
+        nomeAluno: nomeBase,
+        nomeResponsavel: nomeResponsavelRaw,
         dataVencimento,
         valorBruto: normalizeNumber(getValue(colValorBruto)),
         desconto: String(getValue(colDesconto) || '').trim(),
