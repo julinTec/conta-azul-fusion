@@ -10,7 +10,7 @@ interface SyncResult {
 }
 
 interface SyncNotificationRequest {
-  status: "success" | "error" | "partial" | "no_changes"; receivablesCount: number; payablesCount: number;
+  status: "success" | "error" | "partial" | "no_changes" | "warning"; receivablesCount: number; payablesCount: number;
   totalTransactions: number; timestamp: string; errorMessage?: string; syncResults?: SyncResult[];
   schoolsProcessed?: number; schoolsSuccessful?: number; schoolsFailed?: number; message?: string;
 }
@@ -25,9 +25,11 @@ const handler = async (req: Request): Promise<Response> => {
     const isSuccess = status === "success";
     const isNoChanges = status === "no_changes";
     const isPartial = status === "partial";
-    const statusColor = isSuccess || isNoChanges ? "#10b981" : isPartial ? "#f59e0b" : "#ef4444";
-    const statusIcon = isSuccess ? "✅" : isNoChanges ? "📋" : isPartial ? "⚠️" : "❌";
-    const statusText = isSuccess ? "Sucesso" : isNoChanges ? "Verificado" : isPartial ? "Parcial" : "Erro";
+    const isWarning = status === "warning";
+    const isError = status === "error";
+    const statusColor = isSuccess || isNoChanges ? "#10b981" : isPartial || isWarning ? "#f59e0b" : "#ef4444";
+    const statusIcon = isSuccess ? "✅" : isNoChanges ? "📋" : isPartial ? "⚠️" : isWarning ? "⚠️" : "❌";
+    const statusText = isSuccess ? "Sucesso" : isNoChanges ? "Verificado" : isPartial ? "Parcial" : isWarning ? "Aviso" : "Erro";
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}
@@ -43,6 +45,8 @@ const handler = async (req: Request): Promise<Response> => {
       <div class="header"><h1>${statusIcon} Sincronização Conta Azul - ${statusText}</h1></div>
       <div class="content">
         <div class="stat-row"><span class="stat-label">🕐 Data/Hora</span><span class="stat-value">${new Date(timestamp).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span></div>
+        ${message ? `<div class="stat-row" style="background:${isError ? '#fef2f2' : isWarning ? '#fffbeb' : 'transparent'};margin:-12px;padding:12px;border-radius:4px;margin-bottom:12px">
+          <span class="stat-label">${isError ? '🚨' : isWarning ? '⚠️' : '💬'} Mensagem</span><span class="stat-value" style="color:${statusColor}">${message}</span></div>` : ''}
         ${schoolsProcessed !== undefined ? `
         <div class="stat-row"><span class="stat-label">🏫 Escolas Processadas</span><span class="stat-value">${schoolsProcessed}</span></div>
         <div class="stat-row"><span class="stat-label">✅ Sincronizadas</span><span class="stat-value">${schoolsSuccessful}</span></div>

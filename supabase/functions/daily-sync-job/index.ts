@@ -374,6 +374,29 @@ serve(async (req) => {
     }));
 
     if (!configs || configs.length === 0) {
+      console.log('⚠️ Nenhuma escola com Conta Azul configurado');
+      
+      // Enviar email informativo sobre falta de configurações
+      try {
+        await supabase.functions.invoke("send-sync-notification", {
+          body: {
+            status: "warning",
+            receivablesCount: 0,
+            payablesCount: 0,
+            totalTransactions: 0,
+            timestamp: new Date().toISOString(),
+            syncResults: [],
+            schoolsProcessed: 0,
+            schoolsSuccessful: 0,
+            schoolsFailed: 0,
+            message: "Nenhuma escola configurada com Conta Azul"
+          },
+        });
+        console.log('📧 Email de aviso enviado');
+      } catch (emailError: any) {
+        console.error("❌ Falha ao enviar email:", emailError.message);
+      }
+      
       return new Response(JSON.stringify({ success: true, message: "Nenhuma escola configurada", schoolsProcessed: 0 }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -441,13 +464,19 @@ serve(async (req) => {
           });
 
           if (refreshRes.error || !refreshRes.data?.access_token) {
-            console.error(`❌ Falha ao renovar token`);
+            const errorDetail = refreshRes.error?.message || 'Refresh token inválido ou expirado';
+            console.error(`❌ Falha ao renovar token: ${errorDetail}`);
             await supabase.from('sync_logs').update({ 
               status: 'failed', 
-              error_message: 'Token refresh failed - reconexão necessária',
+              error_message: `Token expirado - reconectar via OAuth no painel admin. Detalhes: ${errorDetail}`,
               completed_at: new Date().toISOString()
             }).eq('id', logId);
-            syncResults.push({ school: schoolName, slug: schoolSlug, success: false, error: "Token refresh failed" });
+            syncResults.push({ 
+              school: schoolName, 
+              slug: schoolSlug, 
+              success: false, 
+              error: "Token expirado - reconectar via OAuth" 
+            });
             continue;
           }
 
@@ -593,8 +622,13 @@ serve(async (req) => {
       return r;
     }));
 
+    // Verificar se TODAS as escolas falharam (principalmente por tokens expirados)
+    const allFailed = syncResults.length > 0 && syncResults.every(r => !r.success);
+    const successfulSyncsCount = syncResults.filter(r => r.success).length;
+    const failedSyncsCount = syncResults.filter(r => !r.success).length;
+
     // Verificar se precisa continuar
-    if (anyPendingEnrichment && roundNumber < MAX_ROUNDS) {
+    if (anyPendingEnrichment && roundNumber < MAX_ROUNDS && !allFailed) {
       console.log(`\n⏳ Ainda há transações pendentes. Agendando próxima rodada...`);
       
       // Self-invoke em background usando waitUntil para garantir execução
@@ -604,19 +638,28 @@ serve(async (req) => {
         )
       );
     } else {
-      // Sincronização completa OU primeira rodada sem novas transações - enviar email
-      const isNoChanges = roundNumber === 1 && syncResults.every(r => r.success && r.enriched === 0 && r.pending === 0);
-      const statusType = isNoChanges ? "no_changes" : "success";
-      const statusMessage = isNoChanges 
-        ? "Verificação diária concluída - todos os dados estão atualizados" 
-        : "Sincronização completa com sucesso";
+      // Determinar tipo de status baseado no resultado
+      let statusType: string;
+      let statusMessage: string;
       
-      console.log(`\n🎉 ${statusMessage}`);
+      if (allFailed) {
+        statusType = "error";
+        statusMessage = `Falha na sincronização de todas as ${configs.length} escola(s) - verificar tokens OAuth`;
+      } else if (failedSyncsCount > 0) {
+        statusType = "partial";
+        statusMessage = `Sincronização parcial: ${successfulSyncsCount} sucesso, ${failedSyncsCount} falha(s)`;
+      } else {
+        const isNoChanges = roundNumber === 1 && syncResults.every(r => r.success && r.enriched === 0 && r.pending === 0);
+        statusType = isNoChanges ? "no_changes" : "success";
+        statusMessage = isNoChanges 
+          ? "Verificação diária concluída - todos os dados estão atualizados" 
+          : "Sincronização completa com sucesso";
+      }
       
-      // Enviar notificação
+      console.log(`\n${allFailed ? '❌' : '🎉'} ${statusMessage}`);
+      
+      // SEMPRE enviar notificação por email
       try {
-        const successfulSyncs = syncResults.filter(r => r.success);
-        
         console.log(`📧 Enviando email de notificação (${statusType})...`);
         
         const notificationResponse = await supabase.functions.invoke("send-sync-notification", {
@@ -628,8 +671,8 @@ serve(async (req) => {
             timestamp: new Date().toISOString(),
             syncResults: formattedResults,
             schoolsProcessed: configs.length,
-            schoolsSuccessful: successfulSyncs.length,
-            schoolsFailed: syncResults.filter(r => !r.success).length,
+            schoolsSuccessful: successfulSyncsCount,
+            schoolsFailed: failedSyncsCount,
             message: statusMessage
           },
         });
