@@ -8,7 +8,7 @@ import { useSchool } from "@/contexts/SchoolContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 
-const REDIRECT_URI = `${window.location.origin}/auth/callback`;
+const REDIRECT_URI = "https://vvabffebndtzellpnomq.lovableproject.com/auth/callback";
 
 type SyncStatus = 'idle' | 'syncing' | 'waiting' | 'completed' | 'error';
 
