@@ -9,16 +9,23 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const REDIRECT_URI = "https://vvabffebndtzellpnomq.lovable.app/auth/callback";
-const PUBLISHED_DOMAIN = "vvabffebndtzellpnomq.lovable.app";
-
 // Detecta se estamos no ambiente de preview (editor)
 const isPreviewEnvironment = () => {
   const hostname = window.location.hostname;
   return hostname.includes('.lovableproject.com') || 
          hostname.includes('localhost') ||
-         hostname.includes('127.0.0.1') ||
-         !hostname.includes(PUBLISHED_DOMAIN);
+         hostname.includes('127.0.0.1');
+};
+
+// Gera URL publicada a partir do preview
+const getPublishedUrl = (path: string) => {
+  const hostname = window.location.hostname;
+  // Tenta converter preview para publicado (.lovableproject.com -> .lovable.app)
+  if (hostname.includes('.lovableproject.com')) {
+    const publishedDomain = hostname.replace('.lovableproject.com', '.lovable.app');
+    return `https://${publishedDomain}${path}`;
+  }
+  return `${window.location.origin}${path}`;
 };
 
 type SyncStatus = 'idle' | 'syncing' | 'waiting' | 'completed' | 'error';
@@ -217,14 +224,17 @@ export const AdminPanel = () => {
       return;
     }
 
+    const redirectUri = `${window.location.origin}/auth/callback`;
+    
     const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", oauthCredentials.client_id);
-    authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
+    authUrl.searchParams.append("redirect_uri", redirectUri);
     
     const stateData = {
       uuid: crypto.randomUUID(),
-      schoolId: school.id
+      schoolId: school.id,
+      redirectUri: redirectUri
     };
     authUrl.searchParams.append("state", btoa(JSON.stringify(stateData)));
     
@@ -262,14 +272,17 @@ export const AdminPanel = () => {
     localStorage.removeItem("conta_azul_refresh_token");
     localStorage.removeItem("conta_azul_token_expires_at");
 
+    const redirectUri = `${window.location.origin}/auth/callback`;
+
     const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", oauthCredentials.client_id);
-    authUrl.searchParams.append("redirect_uri", REDIRECT_URI);
+    authUrl.searchParams.append("redirect_uri", redirectUri);
     
     const stateData = {
       uuid: crypto.randomUUID(),
-      schoolId: school.id
+      schoolId: school.id,
+      redirectUri: redirectUri
     };
     authUrl.searchParams.append("state", btoa(JSON.stringify(stateData)));
     
@@ -460,7 +473,7 @@ export const AdminPanel = () => {
                   A integração com Conta Azul deve ser feita na versão publicada do aplicativo.
                 </p>
                 <Button 
-                  onClick={() => window.open(`https://${PUBLISHED_DOMAIN}/school/${school?.slug}/dashboard`, '_blank')}
+                  onClick={() => window.open(getPublishedUrl(`/school/${school?.slug}/dashboard`), '_blank')}
                   className="gap-2"
                 >
                   <ExternalLink className="h-4 w-4" />

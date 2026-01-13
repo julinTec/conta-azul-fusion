@@ -20,13 +20,16 @@ export default function AuthCallback() {
         return;
       }
 
-      // Extrair school_id do state
+      // Extrair school_id e redirectUri do state
       let schoolId = null;
+      let redirectUri = `${window.location.origin}/auth/callback`; // fallback
+      
       if (state) {
         try {
           const stateData = JSON.parse(atob(state));
           schoolId = stateData.schoolId;
-          console.log(`[AuthCallback] Received OAuth callback for school: ${schoolId}`);
+          redirectUri = stateData.redirectUri || redirectUri;
+          console.log(`[AuthCallback] Received OAuth callback for school: ${schoolId}, redirectUri: ${redirectUri}`);
         } catch (e) {
           console.error("[AuthCallback] Error parsing state:", e);
           toast.error("Erro ao processar autenticação: state inválido");
@@ -57,7 +60,6 @@ export default function AuthCallback() {
 
       try {
         setStatus("Obtendo token de acesso...");
-        const redirectUri = "https://vvabffebndtzellpnomq.lovable.app/auth/callback";
         
         // Buscar credenciais OAuth da escola
         const { data: oauthCreds, error: credsError } = await supabase
