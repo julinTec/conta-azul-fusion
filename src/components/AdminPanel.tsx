@@ -1,14 +1,25 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogIn, RefreshCw, Database, LogOut, Tags, XCircle, CheckCircle2 } from "lucide-react";
+import { LogIn, RefreshCw, Database, LogOut, Tags, XCircle, CheckCircle2, ExternalLink, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSchool } from "@/contexts/SchoolContext";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const REDIRECT_URI = "https://vvabffebndtzellpnomq.lovable.app/auth/callback";
+const PUBLISHED_DOMAIN = "vvabffebndtzellpnomq.lovable.app";
+
+// Detecta se estamos no ambiente de preview (editor)
+const isPreviewEnvironment = () => {
+  const hostname = window.location.hostname;
+  return hostname.includes('.lovableproject.com') || 
+         hostname.includes('localhost') ||
+         hostname.includes('127.0.0.1') ||
+         !hostname.includes(PUBLISHED_DOMAIN);
+};
 
 type SyncStatus = 'idle' | 'syncing' | 'waiting' | 'completed' | 'error';
 
@@ -440,7 +451,24 @@ export const AdminPanel = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!hasConnection ? (
+          {isPreviewEnvironment() ? (
+            <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 dark:text-amber-200">Ambiente de Preview</AlertTitle>
+              <AlertDescription className="text-amber-700 dark:text-amber-300">
+                <p className="mb-3">
+                  A integração com Conta Azul deve ser feita na versão publicada do aplicativo.
+                </p>
+                <Button 
+                  onClick={() => window.open(`https://${PUBLISHED_DOMAIN}/school/${school?.slug}/dashboard`, '_blank')}
+                  className="gap-2"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Abrir Versão Publicada
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : !hasConnection ? (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground mb-4">
                 Conecte sua conta do Conta Azul para começar a sincronizar os dados financeiros.
