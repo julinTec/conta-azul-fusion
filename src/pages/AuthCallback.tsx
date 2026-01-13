@@ -57,7 +57,7 @@ export default function AuthCallback() {
 
       try {
         setStatus("Obtendo token de acesso...");
-        const redirectUri = `${window.location.origin}/auth/callback`;
+        const redirectUri = "https://vvabffebndtzellpnomq.lovable.app/auth/callback";
         
         // Buscar credenciais OAuth da escola
         const { data: oauthCreds, error: credsError } = await supabase
