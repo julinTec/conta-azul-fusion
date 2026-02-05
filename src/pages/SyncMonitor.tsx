@@ -329,9 +329,24 @@ export const SyncMonitor = () => {
               });
             }
             
-            // Atualizar estatísticas do banco
-            await checkDbStats();
-            addLog('info', `📊 Stats: ${dbStats.total} total | ${dbStats.enriched} enriquecidas | ${dbStats.pending} pendentes`);
+            // Buscar estatísticas atualizadas diretamente do banco
+            const { count: totalCount } = await supabase
+              .from('synced_transactions')
+              .select('*', { count: 'exact', head: true })
+              .eq('school_id', school.id);
+
+            const { count: pendingCount } = await supabase
+              .from('synced_transactions')
+              .select('*', { count: 'exact', head: true })
+              .eq('school_id', school.id)
+              .in('category_name', ['Outras Receitas', 'Outras Despesas']);
+
+            const total = totalCount || 0;
+            const pending = pendingCount || 0;
+            const enriched = total - pending;
+            
+            setDbStats({ total, enriched, pending });
+            addLog('info', `📊 Stats: ${total} total | ${enriched} enriquecidas | ${pending} pendentes`);
             
           } catch (checkError) {
             addLog('warn', '⚠ Não foi possível verificar checkpoint');
