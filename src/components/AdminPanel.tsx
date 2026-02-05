@@ -193,6 +193,20 @@ export const AdminPanel = () => {
     }
   };
 
+  const getContaAzulRedirectUri = () => {
+    const host = window.location.hostname;
+    const isEmbeddedEditorPreview =
+      host.endsWith(".lovableproject.com") || host === "localhost" || host === "127.0.0.1";
+
+    // No preview embutido do editor, `window.location.origin` é *.lovableproject.com,
+    // mas o callback cadastrado normalmente é o Preview URL externo (*.lovable.app).
+    const origin = isEmbeddedEditorPreview
+      ? "https://id-preview--e67bcf1c-e649-449f-b1c3-6b34a01b3f70.lovable.app"
+      : window.location.origin;
+
+    return `${origin}/auth/callback`;
+  };
+
   const handleConnect = () => {
     if (!school?.id) {
       toast.error("Escola não identificada");
@@ -204,9 +218,10 @@ export const AdminPanel = () => {
       return;
     }
 
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = getContaAzulRedirectUri();
     
-    const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
+    // Conta Azul: endpoint de autorização é /login (não /oauth2/authorize)
+    const authUrl = new URL("https://auth.contaazul.com/login");
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", oauthCredentials.client_id);
     authUrl.searchParams.append("redirect_uri", redirectUri);
@@ -223,6 +238,7 @@ export const AdminPanel = () => {
     authUrl.searchParams.append("max_age", "0");
 
     const url = authUrl.toString();
+    console.log("[AdminPanel] Conta Azul auth URL:", url);
 
     try {
       if (window.top && window.top !== window) {
@@ -252,9 +268,10 @@ export const AdminPanel = () => {
     localStorage.removeItem("conta_azul_refresh_token");
     localStorage.removeItem("conta_azul_token_expires_at");
 
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const redirectUri = getContaAzulRedirectUri();
 
-    const authUrl = new URL("https://auth.contaazul.com/oauth2/authorize");
+    // Conta Azul: endpoint de autorização é /login (não /oauth2/authorize)
+    const authUrl = new URL("https://auth.contaazul.com/login");
     authUrl.searchParams.append("response_type", "code");
     authUrl.searchParams.append("client_id", oauthCredentials.client_id);
     authUrl.searchParams.append("redirect_uri", redirectUri);
@@ -271,6 +288,7 @@ export const AdminPanel = () => {
     authUrl.searchParams.append("max_age", "0");
 
     const url = authUrl.toString();
+    console.log("[AdminPanel] Conta Azul auth URL (reconnect):", url);
 
     try {
       if (window.top && window.top !== window) {
